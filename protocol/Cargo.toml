@@ -1,0 +1,9 @@
+[package]
+name = "websocket"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sha-1 = "0.10"
+base64 = "0.13"
+bin-layout = { version = "5", features = ["BE"] }
