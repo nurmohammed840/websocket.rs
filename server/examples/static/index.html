@@ -1,0 +1,8 @@
+<h1>Hello World</h1>
+
+<script>
+    let name = prompt("What is your name?");
+
+    let ws = new WebSocket("ws://localhost:8080/chat");
+    ws.onerror = console.error
+</script>

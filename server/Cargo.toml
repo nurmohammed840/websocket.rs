@@ -1,6 +1,11 @@
 [package]
-name = "server"
+name = "web-socket-server"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ws-proto = { path = "../protocol" }
+bin-layout = "5"
+
+[dev-dependencies]
+tokio = { version = "1.17.0", features = ["full"] }

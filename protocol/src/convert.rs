@@ -5,8 +5,6 @@ use Opcode::*;
 
 const MSB: u8 = 0b_1000_0000;
 
-// =================================================================================
-
 impl Encoder for Header {
     fn size_hint(&self) -> usize {
         14 // Max header size
@@ -46,13 +44,17 @@ impl<E: Error> Decoder<'_, E> for Header {
             9 => Ping,
             10 => Pong,
             // If an unknown opcode is received, the receiving endpoint MUST _Fail the WebSocket Connection_.
-            _ => return Err(E::invalid_data()),
+            v => {
+                println!("unknown opcode: {v}");
+                return Err(E::invalid_data());
+            }
         };
         let data_len = b2 & 0b_111_1111;
         let payload_len = if opcode.is_control() {
             // Control frames MUST NOT be fragmented.
             // All control frames MUST have a payload length of 125 bytes or less
             if !fin || data_len > 125 {
+                println!("Error: {opcode:?}");
                 return Err(E::invalid_data());
             }
             data_len as usize

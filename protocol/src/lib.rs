@@ -1,6 +1,7 @@
+#![allow(warnings)]
 mod convert;
 pub mod frame;
-pub mod utils;
+pub mod handshake;
 
 /// ### Data Frame Header
 ///
