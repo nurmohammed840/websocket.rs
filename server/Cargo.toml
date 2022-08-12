@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 ws-proto = { path = "../protocol" }
-bin-layout = "5"
+bin-layout = "6"
 
 [dev-dependencies]
-tokio = { version = "1.17.0", features = ["full"] }
+tokio = { version = "1.20.0", features = ["full"] }

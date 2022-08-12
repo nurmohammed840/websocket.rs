@@ -1,5 +1,5 @@
 #![allow(warnings)]
-use bin_layout::{Cursor, Decoder, ErrorKind};
+use bin_layout::{Cursor, Decoder};
 use core::slice;
 use std::{io, mem::MaybeUninit};
 use tokio::{
@@ -22,8 +22,8 @@ async fn handler(mut socket: TcpStream) -> io::Result<()> {
             }
             v => {
                 let mut cursor = Cursor::new(&buf[..v]);
-                let header: Result<_, ErrorKind> = Header::decoder(&mut cursor);
-                println!("{:#?}", header);
+                // let header: Result<_, ErrorKind> = Header::decoder(&mut cursor);
+                // println!("{:#?}", header);
             }
         }
     }

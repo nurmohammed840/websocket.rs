@@ -8,30 +8,31 @@ pub struct Frame<T> {
 }
 
 impl Header {
-    fn control(opcode: Opcode, payload_len: usize, mask: Option<[u8; 4]>) -> Self {
+    fn control(opcode: Opcode, len: usize, mask: Option<[u8; 4]>) -> Self {
         Self {
             fin: true,
             rsv: Rsv(0),
             opcode,
-            payload_len,
+            len,
             mask,
         }
     }
 }
 
-fn trim_control_payload(msg: &[u8]) -> (usize, &[u8]) {
-    let payload_len = msg.len().min(123);
-    (payload_len, unsafe { msg.get_unchecked(..payload_len) })
+fn trim_control_payload(msg: &[u8]) -> &[u8] {
+    unsafe { msg.get_unchecked(..msg.len().min(123)) }
 }
 
 impl<T> Frame<T> {
     pub fn ping<'a>(msg: &'a [u8]) -> Frame<&'a [u8]> {
-        let (payload_len, payload) = trim_control_payload(msg);
+        let payload = trim_control_payload(msg);
         Frame {
-            header: Header::control(Opcode::Ping, payload_len, None),
+            header: Header::control(Opcode::Ping, payload.len(), None),
             payload,
         }
     }
 }
 
 type CloseFrame<'a> = Frame<(CloseCode, &'a [u8])>;
+
+

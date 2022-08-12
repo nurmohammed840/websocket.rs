@@ -25,7 +25,7 @@ pub mod handshake;
 /// |                     Payload Data continued ...                |
 /// +---------------------------------------------------------------+
 /// ```
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Header {
     /// Indicates that this is the final fragment in a message.  The first
     /// fragment MAY also be the final fragment.
@@ -39,25 +39,28 @@ pub struct Header {
 
     pub opcode: Opcode,
 
-    pub payload_len: usize,
+    /// Length of the "Payload data" in bytes.
+    pub len: usize,
 
     /// Defines whether the "Payload data" is masked.  If set to 1, a
     /// masking key is present in masking-key, and this is used to unmask
-    /// the "Payload data" as per Section 5.3.  All frames sent from
+    /// the "Payload data" as per [Section 5.3](https://datatracker.ietf.org/doc/html/rfc6455#section-5.3).  All frames sent from
     /// client to server have this bit set to 1.
     ///
     /// ### Required for client
+    ///
     /// A client MUST mask all frames that it sends to the server. (Note
     /// that masking is done whether or not the WebSocket Protocol is running
     /// over TLS.)  The server MUST close the connection upon receiving a
     /// frame that is not masked.
     ///
-    /// Note: A server MUST NOT mask any frames that it sends to the client.
+    /// A server MUST NOT mask any frames that it sends to the client.
     pub mask: Option<[u8; 4]>,
 }
 
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy)]
+/// Defines the interpretation of the "Payload data".  If an unknown
+/// opcode is received, the receiving endpoint MUST _Fail the WebSocket Connection_.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Opcode {
     /// The FIN and opcode fields work together to send a message split up into separate frames. This is called message fragmentation.
     ///
@@ -85,10 +88,6 @@ pub enum Opcode {
     Binary = 2,
 
     // 3-7 are reserved for further non-control frames.
-
-    // Those are control frames. All control frames MUST have a payload length of 125 bytes or less
-    // and MUST NOT be fragmented.
-    ///
     /// - The Close frame MAY contain a body that indicates a reason for closing.
     ///
     /// - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
@@ -172,7 +171,7 @@ pub enum CloseCode {
 }
 
 /// Rsv are used for extensions.
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct Rsv(pub u8);
 
 impl Rsv {
@@ -189,5 +188,134 @@ impl Rsv {
     /// The third bit of the RSV field.
     pub fn rsv3(&self) -> bool {
         self.0 & 0b___1_0000 != 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handshake::apply_mask;
+    use bin_layout::{Cursor, Decoder, Encoder};
+
+    #[test]
+    fn unmasked_text_message() {
+        let data = [0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f];
+        let mut c = Cursor::new(data.as_slice());
+        assert_eq!(
+            Header::decoder(&mut c).unwrap(),
+            Header {
+                fin: true,
+                rsv: Rsv(0),
+                opcode: Opcode::Text,
+                len: 5,
+                mask: None
+            }
+        );
+        assert_eq!(c.remaining_slice(), b"Hello");
+    }
+
+    #[test]
+    fn masked_text_message() {
+        let data = [
+            0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58,
+        ];
+        let mut c = Cursor::new(data.as_slice());
+        assert_eq!(
+            Header::decoder(&mut c).unwrap(),
+            Header {
+                fin: true,
+                rsv: Rsv(0),
+                opcode: Opcode::Text,
+                len: 5,
+                mask: Some([55, 250, 33, 61])
+            }
+        );
+        let mut payload = c.remaining_slice().to_vec();
+        apply_mask([55, 250, 33, 61], &mut payload);
+        assert_eq!(payload, b"Hello");
+    }
+
+    #[test]
+    fn fragmented_unmasked_text_message() {
+        let data = [0x01, 0x03, 0x48, 0x65, 0x6c___, 0x80, 0x02, 0x6c, 0x6f];
+        let mut c = Cursor::new(data.as_slice());
+
+        assert_eq!(
+            Header::decoder(&mut c).unwrap(),
+            Header {
+                fin: false,
+                rsv: Rsv(0),
+                opcode: Opcode::Text,
+                len: 3,
+                mask: None
+            }
+        );
+        assert_eq!(c.read_slice(3).unwrap(), b"Hel");
+
+        assert_eq!(
+            Header::decoder(&mut c).unwrap(),
+            Header {
+                fin: true,
+                rsv: Rsv(0),
+                opcode: Opcode::Continue,
+                len: 2,
+                mask: None
+            }
+        );
+        assert_eq!(c.remaining_slice(), b"lo");
+    }
+
+    #[test]
+    fn unmasked_ping_req_and_masked_ping_res() {
+        let data = [
+            0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f___, 0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f,
+            0x9f, 0x4d, 0x51, 0x58,
+        ];
+        let mut c = Cursor::new(data.as_slice());
+
+        assert_eq!(
+            Header::decoder(&mut c).unwrap(),
+            Header {
+                fin: true,
+                rsv: Rsv(0),
+                opcode: Opcode::Ping,
+                len: 5,
+                mask: None
+            }
+        );
+        assert_eq!(c.read_slice(5).unwrap(), b"Hello");
+
+        // ----------------------
+
+        assert_eq!(
+            Header::decoder(&mut c).unwrap(),
+            Header {
+                fin: true,
+                rsv: Rsv(0),
+                opcode: Opcode::Pong,
+                len: 5,
+                mask: Some([55, 250, 33, 61])
+            }
+        );
+        let mut payload = c.remaining_slice().to_vec();
+        apply_mask([55, 250, 33, 61], &mut payload);
+        assert_eq!(payload, b"Hello");
+    }
+
+    #[test]
+    fn test_payload_len() {
+        let mut header = Header {
+            fin: true,
+            rsv: Rsv(0),
+            opcode: Opcode::Binary,
+            len: 0,
+            mask: None,
+        };
+
+        header.len = 256;
+        assert_eq!(header.encode(), [130, 126, 1, 0]);
+
+        header.len = 65536;
+        assert_eq!(header.encode(), [130, 127, 0, 0, 0, 0, 0, 1, 0, 0]);
     }
 }
