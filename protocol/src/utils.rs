@@ -75,11 +75,12 @@ pub fn response(key: &str) -> String {
     use sha1::{Digest, Sha1};
     let mut m = Sha1::new();
     m.update(key.as_bytes());
-    m.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"); // Magic string
+    m.update(MAGIC_STRING);
     let key = base64::encode(m.finalize());
-
     format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n\r\n",)
 }
+
+pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 pub fn apply_mask<const S: usize>(keys: [u8; S], payload: &mut [u8]) {
     payload

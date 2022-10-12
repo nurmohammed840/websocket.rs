@@ -4,7 +4,7 @@ use std::{
 };
 
 use bin_layout::Encoder;
-use ws_proto::{handshake::apply_mask, Header, Opcode, Rsv};
+use ws_proto::{utils::apply_mask, Header, Opcode, Rsv};
 
 fn main() -> Result<()> {
     println!("connection...");
@@ -34,12 +34,12 @@ fn main() -> Result<()> {
         len: 5,
         mask: Some([1, 2, 3, 4]),
     }
-    .encoder(&mut msg);
+    .encoder(&mut msg)?;
 
     let mut hello = b"Hello".to_vec();
     apply_mask([1, 2, 3, 4], &mut hello[..]);
     for item in hello {
-        item.encoder(&mut msg);
+        item.encoder(&mut msg)?;
     }
 
     Header {
@@ -49,12 +49,12 @@ fn main() -> Result<()> {
         len: 5,
         mask: Some([4, 3, 2, 1]),
     }
-    .encoder(&mut msg);
+    .encoder(&mut msg)?;
 
     let mut hello = b"World".to_vec();
     apply_mask([4, 3, 2, 1], &mut hello[..]);
     for item in hello {
-        item.encoder(&mut msg);
+        item.encoder(&mut msg)?;
     }
 
     socket.write_all(&msg)?;

@@ -6,4 +6,4 @@ edition = "2021"
 [dependencies]
 sha-1 = "0.10"
 base64 = "0.13"
-bin-layout = { version = "6", features = ["BE"] }
+bin-layout = { version = "7.1", features = ["BE"] }

@@ -2,7 +2,7 @@ mod buf_reader;
 mod data;
 mod err;
 
-use bin_layout::{Cursor, Decoder};
+use bin_layout::Decoder;
 use buf_reader::BufferReader;
 use std::{
     array::IntoIter,
@@ -11,8 +11,10 @@ use std::{
     net::TcpStream,
 };
 use ws_proto::{Header, Opcode};
-
 pub use data::{Data, DataType};
+
+pub const SERVER: bool = true;
+pub const CLIENT: bool = false;
 
 pub struct Websocket<const IS_SERVER: bool> {
     pub stream: BufferReader<TcpStream>,
@@ -55,7 +57,8 @@ fn recv_header<R: Read>(
     stream.ensure_data(14)?;
     let data = stream.buffer();
 
-    let mut cursor = Cursor::new(data.as_ref());
+    let mut cursor = data.as_ref();
+    let total_len = cursor.len();
     let Header {
         fin,
         opcode,
@@ -68,7 +71,7 @@ fn recv_header<R: Read>(
         Some(keys) => keys.into_iter().cycle(),
         None => return err::proto("Got unmasked frame"),
     };
-    stream.consume(cursor.offset);
+    stream.consume(total_len - cursor.len());
     Ok((fin, opcode, len, mask))
 }
 

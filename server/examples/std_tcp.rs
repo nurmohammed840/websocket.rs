@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use bin_layout::{Cursor, Decoder};
+use bin_layout::Decoder;
 
 fn process(mut stream: TcpStream) -> Result<()> {
     let mut buf = [0; 80 * 1024];
@@ -22,7 +22,7 @@ fn process(mut stream: TcpStream) -> Result<()> {
             .find_map(|(key, value)| key.contains("Sec-WebSocket-Key").then_some(value))
             .unwrap();
 
-        let res = ws_proto::handshake::response(sec_key);
+        let res = ws_proto::utils::response(sec_key);
 
         println!("Sending Responce:\n\n{res}");
         stream.write_all(res.as_bytes())?;
@@ -31,7 +31,7 @@ fn process(mut stream: TcpStream) -> Result<()> {
         loop {
             // std::thread::sleep_ms(2000);
             let n = stream.read(&mut buf[..])?;
-            let mut c = Cursor::new(&buf[..n]);
+            let mut c = &buf[..n];
             
             println!("Received: {n} bytes");
             println!("{:#?}", ws_proto::Header::decoder(&mut c).unwrap());

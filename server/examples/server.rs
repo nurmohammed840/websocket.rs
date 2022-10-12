@@ -1,5 +1,5 @@
 #![allow(warnings)]
-use bin_layout::{Cursor, Decoder};
+use bin_layout::Decoder;
 use core::slice;
 use std::{io, mem::MaybeUninit};
 use tokio::{
@@ -7,7 +7,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
-use ws_proto::{handshake, Header, CloseCode};
+use ws_proto::{utils, Header, CloseCode};
 
 async fn handler(mut socket: TcpStream) -> io::Result<()> {
     let addr = socket.peer_addr()?;
@@ -21,7 +21,7 @@ async fn handler(mut socket: TcpStream) -> io::Result<()> {
                 return Ok(());
             }
             v => {
-                let mut cursor = Cursor::new(&buf[..v]);
+                // let mut cursor = Cursor::new(&buf[..v]);
                 // let header: Result<_, ErrorKind> = Header::decoder(&mut cursor);
                 // println!("{:#?}", header);
             }
@@ -40,7 +40,7 @@ async fn process(mut socket: TcpStream) -> io::Result<()> {
     }
     if data.starts_with(b"GET /chat HTTP/1.1") {
         let key = "handshake::key(&data).unwrap_or()";
-        let res = handshake::response(key);
+        let res = utils::response(key);
         socket.write(res.as_bytes()).await?;
         handler(socket).await?;
     }
