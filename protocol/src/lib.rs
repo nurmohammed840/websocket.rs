@@ -24,7 +24,7 @@ pub mod utils;
 /// |                     Payload Data continued ...                |
 /// +---------------------------------------------------------------+
 /// ```
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Header {
     /// Indicates that this is the final fragment in a message.  The first
     /// fragment MAY also be the final fragment.
@@ -87,6 +87,7 @@ pub enum Opcode {
     Binary = 2,
 
     // 3-7 are reserved for further non-control frames.
+    
     /// - The Close frame MAY contain a body that indicates a reason for closing.
     ///
     /// - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
@@ -121,6 +122,7 @@ pub enum Opcode {
     ///
     ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
     Pong = 10,
+
     // 11-15 are reserved for further control frames
 }
 
@@ -170,7 +172,7 @@ pub enum CloseCode {
 }
 
 /// Rsv are used for extensions.
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone)]
 pub struct Rsv(pub u8);
 
 impl Rsv {
@@ -196,12 +198,17 @@ mod tests {
     use crate::utils::apply_mask;
     use bin_layout::{Decoder, Encoder};
 
+    fn read_slice<'a>(remaining: &mut &'a [u8], len: usize) -> &'a [u8] {
+        let slice = &remaining[..len];
+        *remaining = &remaining[len..];
+        slice
+    }
+
     #[test]
     fn unmasked_text_message() {
-        let data = [0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f];
-        let mut c = &mut data.as_slice();
+        let mut c = [0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f].as_slice();
         assert_eq!(
-            Header::decode(&mut c).unwrap(),
+            Header::decoder(&mut c).unwrap(),
             Header {
                 fin: true,
                 rsv: Rsv(0),
@@ -215,30 +222,32 @@ mod tests {
 
     #[test]
     fn masked_text_message() {
-        let data = [
+        let mut c = [
             0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58,
-        ];
-        let mut c = &mut data.as_slice();
-        assert_eq!(
-            Header::decoder(&mut c).unwrap(),
-            Header {
-                fin: true,
-                rsv: Rsv(0),
-                opcode: Opcode::Text,
-                len: 5,
-                mask: Some([55, 250, 33, 61])
-            }
-        );
+        ]
+        .as_slice();
+
+        let header = Header {
+            fin: true,
+            rsv: Rsv(0),
+            opcode: Opcode::Text,
+            len: 5,
+            mask: Some([55, 250, 33, 61]),
+        };
+        assert_eq!(Header::decoder(&mut c).unwrap(), header);
+
         let mut payload = c.to_vec();
-        apply_mask([55, 250, 33, 61], &mut payload);
+        apply_mask(header.mask.unwrap(), &mut payload);
         assert_eq!(payload, b"Hello");
     }
 
     #[test]
     fn fragmented_unmasked_text_message() {
-        let data = [0x01, 0x03, 0x48, 0x65, 0x6c___, 0x80, 0x02, 0x6c, 0x6f];
-        let mut c = &mut data.as_slice();
-
+        let mut c = [
+            0x01, 0x03, 0x48, 0x65, 0x6c, // fragmented frame
+            0x80, 0x02, 0x6c, 0x6f, // final frame
+        ]
+        .as_slice();
         assert_eq!(
             Header::decoder(&mut c).unwrap(),
             Header {
@@ -249,8 +258,7 @@ mod tests {
                 mask: None
             }
         );
-        // assert_eq!(c.read_slice(3).unwrap(), b"Hel");
-
+        assert_eq!(read_slice(&mut c, 3), b"Hel");
         assert_eq!(
             Header::decoder(&mut c).unwrap(),
             Header {
@@ -261,44 +269,37 @@ mod tests {
                 mask: None
             }
         );
-        // assert_eq!(c.remaining_slice(), b"lo");
+        assert_eq!(c, b"lo");
     }
 
     #[test]
-    fn unmasked_ping_req_and_masked_ping_res() {
-        let data = [
-            0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f___, 0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f,
-            0x9f, 0x4d, 0x51, 0x58,
-        ];
-        let mut c = &mut data.as_slice();
+    fn unmasked_ping_req_and_masked_pong_res() {
+        let mut c = [
+            0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f, // unmasked ping request
+            0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58, // masked pong response
+        ]
+        .as_slice();
+        let unmask_ping_req = Header {
+            fin: true,
+            rsv: Rsv(0),
+            opcode: Opcode::Ping,
+            len: 5,
+            mask: None,
+        };
+        assert_eq!(Header::decoder(&mut c).unwrap(), unmask_ping_req);
+        assert_eq!(read_slice(&mut c, 5), b"Hello");
 
-        assert_eq!(
-            Header::decoder(&mut c).unwrap(),
-            Header {
-                fin: true,
-                rsv: Rsv(0),
-                opcode: Opcode::Ping,
-                len: 5,
-                mask: None
-            }
-        );
-        // assert_eq!(c.read_slice(5).unwrap(), b"Hello");
-
-        // ----------------------
-
-        assert_eq!(
-            Header::decoder(&mut c).unwrap(),
-            Header {
-                fin: true,
-                rsv: Rsv(0),
-                opcode: Opcode::Pong,
-                len: 5,
-                mask: Some([55, 250, 33, 61])
-            }
-        );
-        // let mut payload = c.remaining_slice().to_vec();
-        // apply_mask([55, 250, 33, 61], &mut payload);
-        // assert_eq!(payload, b"Hello");
+        let masked_pong_res = Header {
+            fin: true,
+            rsv: Rsv(0),
+            opcode: Opcode::Pong,
+            len: 5,
+            mask: Some([55, 250, 33, 61]),
+        };
+        assert_eq!(Header::decoder(&mut c).unwrap(), masked_pong_res);
+        let mut payload = c.to_vec();
+        apply_mask(masked_pong_res.mask.unwrap(), &mut payload);
+        assert_eq!(payload, b"Hello");
     }
 
     #[test]

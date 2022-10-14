@@ -1,79 +1,103 @@
-mod buf_reader;
-mod data;
-mod err;
-
-use bin_layout::Decoder;
-use buf_reader::BufferReader;
-use std::{
-    array::IntoIter,
-    io::{Error, ErrorKind, Read, Result},
-    iter::Cycle,
-    net::TcpStream,
+use std::io;
+use tokio::{
+    io::BufReader,
+    net::{TcpStream, ToSocketAddrs},
 };
-use ws_proto::{Header, Opcode};
-pub use data::{Data, DataType};
 
 pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
 
 pub struct Websocket<const IS_SERVER: bool> {
-    pub stream: BufferReader<TcpStream>,
+    pub stream: BufReader<TcpStream>,
+}
+
+impl Websocket<CLIENT> {
+    pub async fn connect(addr: impl ToSocketAddrs) -> io::Result<Self> {
+        let stream = TcpStream::connect(addr).await?;
+        Ok(Self {
+            stream: BufReader::new(stream),
+        })
+    }
+}
+
+impl Websocket<SERVER> {
+    pub fn new(stream: BufReader<TcpStream>) -> Self {
+        Self { stream }
+    }
+}
+
+// use ws_proto::Header;
+pub trait Message {
+    // fn data_type() -> ws_proto::Opcode;
 }
 
 impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
-    pub fn new(stream: TcpStream) -> Self {
-        Self::with_capacity(8 * 1024, stream)
+    pub fn send(&mut self, _msg: impl Message) {
+        
     }
-
-    pub fn with_capacity(capacity: usize, stream: TcpStream) -> Self {
-        Self {
-            stream: BufferReader::with_capacity(capacity, stream),
-        }
-    }
-
-    pub fn recv(&mut self) -> Result<Data> {
-        let (fin, opcode, len, mask) = recv_header(&mut self.stream)?;
-        match opcode {
-            Opcode::Text | Opcode::Binary => Ok(Data {
-                fin,
-                len,
-                mask,
-                stream: &mut self.stream,
-                ty: DataType::from(opcode),
-            }),
-            Opcode::Continue => err::proto("Expected data, But got fragment"),
-            Opcode::Ping => todo!(),
-            Opcode::Pong => todo!(),
-            Opcode::Close => todo!(),
-        }
-    }
-
-    pub fn send(&mut self, _msg: impl Into<String>) {}
 }
 
-fn recv_header<R: Read>(
-    stream: &mut BufferReader<R>,
-) -> Result<(bool, Opcode, usize, Cycle<IntoIter<u8, 4>>)> {
-    stream.ensure_data(14)?;
-    let data = stream.buffer();
+// --------------------------------------------------------------------------
 
-    let mut cursor = data.as_ref();
-    let total_len = cursor.len();
-    let Header {
-        fin,
-        opcode,
-        len,
-        mask,
-        ..
-    } = Header::decoder(&mut cursor).map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+// mod buf_reader;
+// mod data;
+// mod err;
 
-    let mask = match mask {
-        Some(keys) => keys.into_iter().cycle(),
-        None => return err::proto("Got unmasked frame"),
-    };
-    stream.consume(total_len - cursor.len());
-    Ok((fin, opcode, len, mask))
-}
+// use bin_layout::Decoder;
+// use buf_reader::BufferReader;
+// use std::{
+//     array::IntoIter,
+//     io::{Error, ErrorKind, Read, Result},
+//     iter::Cycle,
+//     net::TcpStream,
+// };
+// use ws_proto::{Header, Opcode};
+// pub use data::{Data, DataType};
+
+// impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
+//     pub fn recv(&mut self) -> Result<Data> {
+//         let (fin, opcode, len, mask) = recv_header(&mut self.stream)?;
+//         match opcode {
+//             Opcode::Text | Opcode::Binary => Ok(Data {
+//                 fin,
+//                 len,
+//                 mask,
+//                 stream: &mut self.stream,
+//                 ty: DataType::from(opcode),
+//             }),
+//             Opcode::Continue => err::proto("Expected data, But got fragment"),
+//             Opcode::Ping => todo!(),
+//             Opcode::Pong => todo!(),
+//             Opcode::Close => todo!(),
+//         }
+//     }
+
+//     pub fn send(&mut self, _msg: impl Into<String>) {}
+// }
+
+// fn recv_header<R: Read>(
+//     stream: &mut BufferReader<R>,
+// ) -> Result<(bool, Opcode, usize, Cycle<IntoIter<u8, 4>>)> {
+//     stream.ensure_data(14)?;
+//     let data = stream.buffer();
+
+//     let mut cursor = data.as_ref();
+//     let total_len = cursor.len();
+//     let Header {
+//         fin,
+//         opcode,
+//         len,
+//         mask,
+//         ..
+//     } = Header::decoder(&mut cursor).map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+
+//     let mask = match mask {
+//         Some(keys) => keys.into_iter().cycle(),
+//         None => return err::proto("Got unmasked frame"),
+//     };
+//     stream.consume(total_len - cursor.len());
+//     Ok((fin, opcode, len, mask))
+// }
 
 // #[cfg(test)]
 // mod tests {

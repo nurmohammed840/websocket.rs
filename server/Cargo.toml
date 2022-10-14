@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ws-proto = { path = "../protocol" }
 bin-layout = "7"
-
-[dev-dependencies]
 tokio = { version = "1.20.0", features = ["full"] }
+ws-proto = { version = "0.1.0", path = "../protocol" }
