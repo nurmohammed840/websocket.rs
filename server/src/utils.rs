@@ -1,4 +1,3 @@
-use tokio::io::AsyncBufReadExt;
 use super::*;
 
 macro_rules! default_impl_for_data {
@@ -8,7 +7,7 @@ macro_rules! default_impl_for_data {
                 self.ty
             }
             #[inline] pub fn len(&self) -> usize {
-                self.len
+                self.ws.len
             }
 
             #[inline] pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> io::Result<()> {
@@ -33,8 +32,8 @@ macro_rules! default_impl_for_data {
                 let start = buf.as_mut_ptr();
                 let mut end = unsafe { start.add(buf.len()) };
                 let amt = end as usize;
-                while self.len > 0 {
-                    let additional = self.len;
+                while self.ws.len > 0 {
+                    let additional = self.ws.len;
                     buf.reserve(additional);
                     unsafe {
                         let uninit = std::slice::from_raw_parts_mut(end, additional);
@@ -44,13 +43,6 @@ macro_rules! default_impl_for_data {
                 }
                 unsafe { buf.set_len(end as usize - start as usize) };
                 Ok(end as usize - amt)
-            }
-        }
-
-        impl Drop for Data<'_> {
-            fn drop(&mut self) {
-                self.ws.len = self.len;
-                self.ws.fin = self.fin;
             }
         }
     };
@@ -64,14 +56,3 @@ pub async fn read_buf<const N: usize>(stream: &mut BufReader<TcpStream>) -> io::
     Ok(buf)
 }
 
-#[inline]
-pub async fn read_bytes<F>(stream: &mut BufReader<TcpStream>, len: usize, cb: F) -> io::Result<usize>
-where
-    F: FnOnce(&[u8]) -> usize,
-{
-    let bytes = stream.fill_buf().await?;
-    let amt = bytes.len().min(len);
-    let count = cb(unsafe { bytes.get_unchecked(..amt) });
-    stream.consume(amt);
-    Ok(count)
-}

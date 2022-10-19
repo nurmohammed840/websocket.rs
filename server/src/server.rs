@@ -1,11 +1,7 @@
 use super::*;
 
 pub struct Data<'a> {
-    // this statement is not possible `self.fin == false && self.len == 0`
-
-    pub(crate) fin: bool,
     pub(crate) ty: DataType,
-    pub(crate) len: usize,
     pub(crate) mask: Mask,
 
     pub(crate) ws: &'a mut Websocket<SERVER>,
@@ -13,9 +9,22 @@ pub struct Data<'a> {
 
 default_impl_for_data!();
 
+#[inline]
+pub async fn read_bytes(
+    stream: &mut BufReader<TcpStream>,
+    len: usize,
+    cb: impl FnOnce(&[u8]) -> usize,
+) -> io::Result<usize> {
+    let bytes = stream.fill_buf().await?;
+    let amt = bytes.len().min(len);
+    let count = cb(unsafe { bytes.get_unchecked(..amt) });
+    stream.consume(amt);
+    Ok(count)
+}
+
 impl<'a> Data<'a> {
     pub async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let amt = read_bytes(&mut self.ws.stream, buf.len().min(self.len), |bytes| {
+        let amt = read_bytes(&mut self.ws.stream, buf.len().min(self.ws.len), |bytes| {
             bytes
                 .iter()
                 .zip(&mut self.mask)
@@ -25,14 +34,9 @@ impl<'a> Data<'a> {
             bytes.len()
         })
         .await?;
-        self.len -= amt;
-        if !self.fin && self.len == 0 {
-            let (fin, opcode, len) = self.ws.header().await?;
-            if opcode != 0 {
-                return err("Expected fragment frame");
-            }
-            self.fin = fin;
-            self.len = len;
+        self.ws.len -= amt;
+        if !self.ws.fin && self.ws.len == 0 {
+            self.ws.read_fragmented_header().await?;
             self.mask = Mask::from(read_buf(&mut self.ws.stream).await?);
         }
         Ok(amt)

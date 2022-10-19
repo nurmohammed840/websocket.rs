@@ -45,11 +45,8 @@ impl Websocket<CLIENT> {
     }
 
     pub async fn recv<'a>(&'a mut self) -> io::Result<client::Data> {
-        let (fin, ty, len) = self.header_data_type().await?;
         Ok(client::Data {
-            fin,
-            len,
-            ty,
+            ty: self.header_data_type().await?,
             ws: self,
         })
     }
@@ -65,14 +62,9 @@ impl Websocket<SERVER> {
     }
 
     pub async fn recv<'a>(&'a mut self) -> io::Result<server::Data> {
-        let (fin, ty, len) = self.header_data_type().await?;
-        Ok(server::Data {
-            fin,
-            ty,
-            len,
-            mask: Mask::from(read_buf(&mut self.stream).await?),
-            ws: self,
-        })
+        let ty = self.header_data_type().await?;
+        let mask = Mask::from(read_buf(&mut self.stream).await?);
+        Ok(server::Data { ty, mask, ws: self })
     }
 }
 
@@ -147,17 +139,26 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
             if self.fin {
                 return Ok(());
             }
-            let (fin, opcode, len) = self.header().await?;
-            if opcode != 0 {
-                return err("Expected fragment frame");
+            self.read_fragmented_header().await?;
+            // also skip masking keys sended from client
+            if IS_SERVER {
+                self.len += 4;
             }
-            self.fin = fin;
-            self.len = len;
         }
     }
 
+    async fn read_fragmented_header(&mut self) -> Result<(), io::Error> {
+        let (fin, opcode, len) = self.header().await?;
+        if opcode != 0 {
+            return err("Expected fragment frame");
+        }
+        self.fin = fin;
+        self.len = len;
+        Ok(())
+    }
+
     #[inline]
-    async fn header_data_type(&mut self) -> io::Result<(bool, DataType, usize)> {
+    async fn header_data_type(&mut self) -> io::Result<DataType> {
         self.discard_old_data().await?;
 
         let (fin, opcode, len) = self.header().await?;
@@ -166,7 +167,11 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
             2 => DataType::Binary,
             _ => return err("Expected data frame"),
         };
-        Ok((fin, data_type, len))
+
+        self.fin = fin;
+        self.len = len;
+
+        Ok(data_type)
     }
 
     pub async fn send(&mut self, frame: impl Frame) -> io::Result<()> {
