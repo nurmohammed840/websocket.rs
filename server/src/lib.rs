@@ -13,7 +13,7 @@ use utils::*;
 
 use std::io;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{TcpStream, ToSocketAddrs},
 };
 
@@ -28,6 +28,10 @@ pub enum DataType {
 
 pub struct Websocket<const IS_SERVER: bool> {
     pub stream: BufReader<TcpStream>,
+
+    // this statement is not possible `self.fin == false && self.len == 0`
+    fin: bool,
+    len: usize,
 }
 
 impl Websocket<CLIENT> {
@@ -35,6 +39,8 @@ impl Websocket<CLIENT> {
         let stream = TcpStream::connect(addr).await?;
         Ok(Self {
             stream: BufReader::new(stream),
+            len: 0,
+            fin: true,
         })
     }
 
@@ -51,7 +57,11 @@ impl Websocket<CLIENT> {
 
 impl Websocket<SERVER> {
     pub fn new(stream: BufReader<TcpStream>) -> Self {
-        Self { stream }
+        Self {
+            stream,
+            len: 0,
+            fin: true,
+        }
     }
 
     pub async fn recv<'a>(&'a mut self) -> io::Result<server::Data> {
@@ -126,8 +136,30 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
         }
     }
 
+    async fn discard_old_data(&mut self) -> io::Result<()> {
+        loop {
+            while self.len > 0 {
+                let bytes = self.stream.fill_buf().await?;
+                let amt = bytes.len().min(self.len);
+                self.len -= amt;
+                self.stream.consume(amt);
+            }
+            if self.fin {
+                return Ok(());
+            }
+            let (fin, opcode, len) = self.header().await?;
+            if opcode != 0 {
+                return err("Expected fragment frame");
+            }
+            self.fin = fin;
+            self.len = len;
+        }
+    }
+
     #[inline]
     async fn header_data_type(&mut self) -> io::Result<(bool, DataType, usize)> {
+        self.discard_old_data().await?;
+
         let (fin, opcode, len) = self.header().await?;
         let data_type = match opcode {
             1 => DataType::Text,

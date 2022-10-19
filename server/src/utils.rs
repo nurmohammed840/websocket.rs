@@ -45,7 +45,14 @@ macro_rules! default_impl_for_data {
                 unsafe { buf.set_len(end as usize - start as usize) };
                 Ok(end as usize - amt)
             }
-        }    
+        }
+
+        impl Drop for Data<'_> {
+            fn drop(&mut self) {
+                self.ws.len = self.len;
+                self.ws.fin = self.fin;
+            }
+        }
     };
 }
 

@@ -1,6 +1,7 @@
 use super::*;
 
 pub struct Data<'a> {
+    // this statement is not possible `self.fin == false && self.len == 0`
     pub(crate) fin: bool,
     pub(crate) len: usize,
     pub(crate) ty: DataType,
