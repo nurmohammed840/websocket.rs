@@ -44,7 +44,6 @@
 /// ### Example
 ///
 /// ```rust
-/// use ws_proto::handshake;
 /// let res = [
 ///     "HTTP/1.1 101 Switching Protocols",
 ///     "Upgrade: websocket",
@@ -53,7 +52,7 @@
 ///     "",
 ///     ""
 /// ];
-/// assert_eq!(handshake::response("dGhlIHNhbXBsZSBub25jZQ=="), res.join("\r\n"));
+/// assert_eq!(ws_proto::utils::response("dGhlIHNhbXBsZSBub25jZQ=="), res.join("\r\n"));
 /// ```
 ///
 /// To get it, concatenate the client's `Sec-WebSocket-Key` and the string _"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"_ together (it's a [Magic string](https://en.wikipedia.org/wiki/Magic_string)), take the SHA-1 hash of the result, and return the base64 encoding of that hash.
