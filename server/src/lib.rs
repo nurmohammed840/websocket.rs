@@ -1,11 +1,11 @@
 mod errors;
 mod frame;
-mod utils;
 mod mask;
+mod utils;
 
 pub mod client;
 pub mod server;
-pub use frame::{Frame, Ping};
+pub use frame::*;
 
 use errors::*;
 use mask::*;
@@ -13,10 +13,9 @@ use utils::*;
 
 use std::io;
 use tokio::{
-    io::{AsyncReadExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::{TcpStream, ToSocketAddrs},
 };
-
 
 pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
@@ -70,59 +69,60 @@ impl Websocket<SERVER> {
 // --------------------------------------------------------------------------------
 
 impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
-    // async fn get_msg(&mut self, len: usize, writer: &mut Vec<u8>) -> io::Result<()> {
-    // }
-
     async fn header(&mut self) -> io::Result<(bool, u8, usize)> {
-        let Self { stream } = self;
-        let [b1, b2] = read_buf(stream).await?;
+        loop {
+            let [b1, b2] = read_buf(&mut self.stream).await?;
 
-        let fin = b1 & 0b_1000_0000 != 0;
-        let opcode = b1 & 0b_1111;
-        let len = b2 & 0b_111_1111;
-        let is_masked = b2 & 0b_1000_0000 != 0;
+            let fin = b1 & 0b_1000_0000 != 0;
+            let opcode = b1 & 0b_1111;
+            let len = (b2 & 0b_111_1111) as usize;
+            let is_masked = b2 & 0b_1000_0000 != 0;
 
-        if IS_SERVER {
-            if !is_masked {
-                return err("Expected masked frame");
-            }
-        } else {
-            if is_masked {
-                return err("Expected unmasked frame");
-            }
-        }
-
-        if opcode >= 8 {
-            if !fin || len > 125 {
-                return err("Control frame MUST have a payload length of 125 bytes or less and MUST NOT be fragmented");
-            }
-            match opcode {
-                // Close
-                8 => {
-                    todo!()
+            if IS_SERVER {
+                if !is_masked {
+                    return err("Expected masked frame");
                 }
-                // Ping
-                9 => {
-                    let mut _res: Vec<u8> = Vec::with_capacity(len as usize);
+            } else {
+                if is_masked {
+                    return err("Expected unmasked frame");
+                }
+            }
 
-                    todo!()
+            if opcode >= 8 {
+                if !fin || len > 125 {
+                    return err("Control frame MUST have a payload length of 125 bytes or less and MUST NOT be fragmented");
                 }
-                // Pong
-                10 => {
-                    todo!()
+
+                let mut msg = vec![0; len];
+                self.stream.read_exact(&mut msg).await?;
+
+                if IS_SERVER {
+                    let mut mask = Mask::from(read_buf(&mut self.stream).await?);
+                    msg.iter_mut()
+                        .zip(&mut mask)
+                        .for_each(|(byte, key)| *byte ^= key);
                 }
-                _ => return err("Unknown opcode"),
+
+                match opcode {
+                    // Close
+                    8 => return conn_closed(),
+                    // Ping
+                    9 => self.send(Pong(&msg)).await?,
+                    // Pong
+                    10 => {}
+                    _ => return err("Unknown opcode"),
+                }
+            } else {
+                if !fin && len == 0 {
+                    return err("Fragment length shouldn't be zero");
+                }
+                let len = match len {
+                    126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
+                    127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
+                    len => len,
+                };
+                return Ok((fin, opcode, len));
             }
-        } else {
-            if !fin && len == 0 {
-                return err("Fragment length shouldn't be zero");
-            }
-            let len = match len {
-                126 => u16::from_be_bytes(read_buf(stream).await?) as usize,
-                127 => u64::from_be_bytes(read_buf(stream).await?) as usize,
-                len => len as usize,
-            };
-            Ok((fin, opcode, len))
         }
     }
 
@@ -137,7 +137,9 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
         Ok((fin, data_type, len))
     }
 
-    pub fn send(_data: &[u8]) {
-        // let _ = Self::encode_frame;
+    pub async fn send(&mut self, frame: impl Frame) -> io::Result<()> {
+        let mut bytes = vec![];
+        frame.encode::<IS_SERVER>(&mut bytes);
+        self.stream.get_mut().write_all(&bytes).await
     }
 }
