@@ -26,12 +26,20 @@ pub enum DataType {
     Binary,
 }
 
-pub struct Websocket<const IS_SERVER: bool> {
+pub struct Websocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,
 
     // this statement is not possible `self.fin == false && self.len == 0`
     fin: bool,
     len: usize,
+}
+
+impl<const SIDE: bool> Websocket<SIDE> {
+    pub async fn send(&mut self, frame: impl Frame) -> io::Result<()> {
+        let mut bytes = vec![];
+        frame.encode::<SIDE>(&mut bytes);
+        self.stream.get_mut().write_all(&bytes).await
+    }
 }
 
 impl Websocket<CLIENT> {
@@ -46,7 +54,7 @@ impl Websocket<CLIENT> {
 
     pub async fn recv<'a>(&'a mut self) -> io::Result<client::Data> {
         Ok(client::Data {
-            ty: self.header_data_type().await?,
+            ty: self.read_data_frame_header().await?,
             ws: self,
         })
     }
@@ -62,7 +70,7 @@ impl Websocket<SERVER> {
     }
 
     pub async fn recv<'a>(&'a mut self) -> io::Result<server::Data> {
-        let ty = self.header_data_type().await?;
+        let ty = self.read_data_frame_header().await?;
         let mask = Mask::from(read_buf(&mut self.stream).await?);
         Ok(server::Data { ty, mask, ws: self })
     }
@@ -96,13 +104,14 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
                 }
 
                 let mut msg = vec![0; len];
-                self.stream.read_exact(&mut msg).await?;
-
                 if IS_SERVER {
                     let mut mask = Mask::from(read_buf(&mut self.stream).await?);
+                    self.stream.read_exact(&mut msg).await?;
                     msg.iter_mut()
                         .zip(&mut mask)
                         .for_each(|(byte, key)| *byte ^= key);
+                } else {
+                    self.stream.read_exact(&mut msg).await?;
                 }
 
                 match opcode {
@@ -130,16 +139,15 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
 
     async fn discard_old_data(&mut self) -> io::Result<()> {
         loop {
-            while self.len > 0 {
-                let bytes = self.stream.fill_buf().await?;
-                let amt = bytes.len().min(self.len);
+            if self.len > 0 {
+                let amt = read_bytes(&mut self.stream, self.len, |_| {}).await?;
                 self.len -= amt;
-                self.stream.consume(amt);
+                continue;
             }
             if self.fin {
                 return Ok(());
             }
-            self.read_fragmented_header().await?;
+            self.next_fragmented_header().await?;
             // also skip masking keys sended from client
             if IS_SERVER {
                 self.len += 4;
@@ -147,7 +155,7 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
         }
     }
 
-    async fn read_fragmented_header(&mut self) -> Result<(), io::Error> {
+    async fn next_fragmented_header(&mut self) -> Result<(), io::Error> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
             return err("Expected fragment frame");
@@ -158,7 +166,7 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
     }
 
     #[inline]
-    async fn header_data_type(&mut self) -> io::Result<DataType> {
+    async fn read_data_frame_header(&mut self) -> io::Result<DataType> {
         self.discard_old_data().await?;
 
         let (fin, opcode, len) = self.header().await?;
@@ -170,13 +178,6 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
 
         self.fin = fin;
         self.len = len;
-
         Ok(data_type)
-    }
-
-    pub async fn send(&mut self, frame: impl Frame) -> io::Result<()> {
-        let mut bytes = vec![];
-        frame.encode::<IS_SERVER>(&mut bytes);
-        self.stream.get_mut().write_all(&bytes).await
     }
 }
