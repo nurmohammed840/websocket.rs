@@ -9,6 +9,11 @@ macro_rules! default_impl_for_data {
             }
 
             #[inline]
+            pub async fn send(&mut self, data: impl Frame) -> io::Result<()> {
+               self.ws.send(data).await
+            }
+
+            #[inline]
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> io::Result<()> {
                 while !buf.is_empty() {
                     match self.read(buf).await {
@@ -59,7 +64,6 @@ pub async fn read_buf<const N: usize>(stream: &mut BufReader<TcpStream>) -> io::
     stream.read_exact(&mut buf).await?;
     Ok(buf)
 }
-
 
 #[inline]
 pub async fn read_bytes(

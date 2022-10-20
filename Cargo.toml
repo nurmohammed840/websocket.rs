@@ -1,2 +1,8 @@
-[workspace]
-members = ["server"]
+[package]
+name = "web-socket-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.20.0", features = ["full"] }
+fastrand = "1.8.0"

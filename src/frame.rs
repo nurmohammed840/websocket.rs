@@ -7,13 +7,13 @@ pub trait Frame {
 pub struct Ping<'a>(pub &'a [u8]);
 pub struct Pong<'a>(pub &'a [u8]);
 
-impl<T: Frame> Frame for &T {
+impl<T: Frame + ?Sized> Frame for &T {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
     }
 }
 
-impl<T: Frame> Frame for Box<T> {
+impl<T: Frame + ?Sized> Frame for Box<T> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
     }

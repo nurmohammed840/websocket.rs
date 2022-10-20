@@ -35,9 +35,9 @@ pub struct Websocket<const SIDE: bool> {
 }
 
 impl<const SIDE: bool> Websocket<SIDE> {
-    pub async fn send(&mut self, frame: impl Frame) -> io::Result<()> {
+    pub async fn send(&mut self, msg: impl Frame) -> io::Result<()> {
         let mut bytes = vec![];
-        frame.encode::<SIDE>(&mut bytes);
+        msg.encode::<SIDE>(&mut bytes);
         self.stream.get_mut().write_all(&bytes).await
     }
 }

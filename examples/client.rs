@@ -69,4 +69,20 @@
 //     Ok(())
 // }
 
-fn main(){}
+fn main() {}
+
+
+// use std::io::Result;
+// use web_socket_server::Websocket;
+
+// async fn _client() -> Result<()> {
+//     let mut ws = Websocket::connect("0.0.0.0:8080").await?;
+//     ws.send("Hello, World!").await?;
+//     loop {
+//         let mut data = ws.recv().await?;
+//         println!("{:?}", data.ty);
+        
+//         let mut buf = vec![];
+//         data.read_to_end(&mut buf).await?;
+//     }
+// }
