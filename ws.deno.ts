@@ -10,9 +10,10 @@ ws.onopen = () => {
     console.log(`Sending: ${ws.bufferedAmount} bytes`)
 
     setTimeout(() => {
-        ws.send("HelloWorld");
+        ws.send("HelloWorld 3");
         console.log(`Sending: ${ws.bufferedAmount} bytes`)
     }, 2000)
+
 }
 
 ws.onmessage = (msg) => {

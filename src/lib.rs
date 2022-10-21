@@ -184,43 +184,45 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
     }
 }
 
-#[cfg(test)]
-mod a {
-    use super::*;
-    use crate::handshake::{get_sec_key, response};
-    use tokio::net::TcpListener;
+// #[cfg(test)]
+// mod a {
+//     use super::*;
+//     use crate::handshake::{get_sec_key, response};
+//     use tokio::net::TcpListener;
 
-    #[tokio::test]
-    async fn main() -> io::Result<()> {
-        let listener = TcpListener::bind("0.0.0.0:8080").await?;
-        println!("Listaning: {}", listener.local_addr()?);
+//     #[tokio::test]
+//     async fn main() -> io::Result<()> {
+//         let listener = TcpListener::bind("0.0.0.0:8080").await?;
+//         println!("Listaning: {}", listener.local_addr()?);
 
-        let (mut stream, _) = listener.accept().await?;
-        let mut buf = vec![0; 4096];
+//         let (mut stream, _) = listener.accept().await?;
+//         let mut buf = vec![0; 4096];
 
-        let amt = stream.read(&mut buf).await?;
-        let msg = String::from_utf8(buf[..amt].to_vec()).unwrap();
-        let sec_key = get_sec_key(&msg).unwrap();
-        println!("{:#?}", sec_key);
+//         let amt = stream.read(&mut buf).await?;
+//         let msg = String::from_utf8(buf[..amt].to_vec()).unwrap();
+//         let sec_key = get_sec_key(&msg).unwrap();
+//         println!("{:#?}", sec_key);
 
-        let res = response(sec_key, "");
-        stream.write_all(res.as_bytes()).await?;
-        println!("{}", res);
+//         let res = response(sec_key, "");
+//         stream.write_all(res.as_bytes()).await?;
+//         println!("{}", res);
 
-        let mut ws = Websocket::new(BufReader::new(stream));
-        loop {
-            let mut data = ws.recv().await?;
-            println!("{:?}", data.ty);
+//         let mut ws = Websocket::new(BufReader::new(stream));
+        
+//         let _ = ws.recv().await?;
+//         let _ = ws.recv().await?;
+        
+//         let mut data = ws.recv().await?;
+//         println!("{:?}", data.ty);
 
-            let mut buf = vec![];
-            data.read_to_end(&mut buf).await?;
-            let msg = String::from_utf8(buf);
-            println!("{:?}", msg);
+//         let mut buf = vec![];
+//         data.read_to_end(&mut buf).await?;
+//         let msg = String::from_utf8(buf);
+//         println!("{:?}", msg);
 
-            if let Ok(a) = msg {
-                data.send(&*a).await?;
-            }
-        }
-        // Ok(())
-    }
-}
+//         if let Ok(a) = msg {
+//             data.send(&*a).await?;
+//         }
+//         Ok(())
+//     }
+// }
