@@ -9,49 +9,60 @@ macro_rules! default_impl_for_data {
             }
 
             #[inline]
+            pub fn fin(&self) -> bool {
+                self.ws.fin
+            }
+
+            #[inline]
             pub async fn send(&mut self, data: impl Frame) -> io::Result<()> {
-               self.ws.send(data).await
+                self.ws.send(data).await
+            }
+
+            #[inline]
+            pub async fn recv_next(&mut self) -> io::Result<bool> {
+                if self.ws.len > 0 {
+                    return Ok(true);
+                }
+                match self.ws.fin {
+                    true => Ok(false),
+                    false => {
+                        self._next_frag().await?;
+                        Ok(true)
+                    }
+                }
             }
 
             #[inline]
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> io::Result<()> {
                 while !buf.is_empty() {
-                    match self.read(buf).await {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            let tmp = buf;
-                            buf = &mut tmp[n..];
-                        }
-                        Err(e) => return Err(e),
+                    match self.read(buf).await? {
+                        0 => break,
+                        amt => buf = &mut buf[amt..],
                     }
                 }
-                if !buf.is_empty() {
-                    Err(io::Error::new(
+                match buf.is_empty() {
+                    true => Ok(()),
+                    false => Err(io::Error::new(
                         io::ErrorKind::UnexpectedEof,
                         "failed to fill whole buffer",
-                    ))
-                } else {
-                    Ok(())
+                    )),
                 }
             }
 
             #[inline]
             pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-                let start = buf.as_mut_ptr();
-                let mut end = unsafe { start.add(buf.len()) };
-                let amt = end as usize;
+                let len = buf.len();
+                let additional = self.ws.len;
+                buf.reserve(additional);
 
-                while self.ws.len > 0 {
-                    let additional = self.ws.len;
-                    buf.reserve(additional);
-                    unsafe {
-                        let uninit = std::slice::from_raw_parts_mut(end, additional);
-                        self.read_exact(uninit).await?;
-                        end = end.add(additional);
-                    }
+                unsafe {
+                    let end = buf.as_mut_ptr().add(len);
+                    let mut uninit = std::slice::from_raw_parts_mut(end, additional);
+                    
+                    self.read_exact(&mut uninit).await?;
+                    buf.set_len(len + additional);
                 }
-                unsafe { buf.set_len(end as usize - start as usize) };
-                Ok(end as usize - amt)
+                Ok(additional)
             }
         }
     };
