@@ -44,7 +44,7 @@ pub struct Data<'a> {
 
 default_impl_for_data!();
 
-impl<'a> Data<'a> {
+impl Data<'_> {
     async fn _next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await
     }

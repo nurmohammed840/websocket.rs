@@ -81,6 +81,16 @@ impl<const SIDE: bool> Websocket<SIDE> {
         }
     }
 
+    async fn read_fragmented_header(&mut self) -> Result<()> {
+        let (fin, opcode, len) = self.header().await?;
+        if opcode != 0 {
+            return err("Expected fragment frame");
+        }
+        self.fin = fin;
+        self.len = len;
+        Ok(())
+    }
+
     async fn discard_old_data(&mut self) -> Result<()> {
         loop {
             if self.len > 0 {
@@ -97,16 +107,6 @@ impl<const SIDE: bool> Websocket<SIDE> {
                 self.len += 4;
             }
         }
-    }
-
-    async fn read_fragmented_header(&mut self) -> Result<()> {
-        let (fin, opcode, len) = self.header().await?;
-        if opcode != 0 {
-            return err("Expected fragment frame");
-        }
-        self.fin = fin;
-        self.len = len;
-        Ok(())
     }
 
     #[inline]
