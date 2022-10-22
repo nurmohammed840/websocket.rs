@@ -44,19 +44,19 @@ impl<'a> Frame for Pong<'a> {
 }
 
 #[inline]
-fn encode<const IS_SERVER: bool, Mask: RandKeys>(
+fn encode<const SIDE: bool, Mask: RandKeys>(
     writer: &mut Vec<u8>,
     fin: bool,
     opcode: u8,
     data: &[u8],
 ) {
     let data_len = data.len();
-    writer.reserve(if IS_SERVER { 10 } else { 14 } + data_len);
+    writer.reserve(if SERVER == SIDE { 10 } else { 14 } + data_len);
     unsafe {
         let filled = writer.len();
         let start = writer.as_mut_ptr().add(filled);
 
-        let mask_bit = if IS_SERVER { 0 } else { 0x80 };
+        let mask_bit = if SERVER == SIDE { 0 } else { 0x80 };
 
         start.write(((fin as u8) << 7) | opcode);
         let len = if data_len < 126 {
@@ -82,7 +82,7 @@ fn encode<const IS_SERVER: bool, Mask: RandKeys>(
             10
         };
 
-        let header_len = if IS_SERVER {
+        let header_len = if SERVER == SIDE {
             std::ptr::copy_nonoverlapping(data.as_ptr(), start.add(len), data_len);
             len
         } else {

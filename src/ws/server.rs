@@ -1,6 +1,5 @@
 use super::*;
 
-
 impl Websocket<SERVER> {
     pub fn new(stream: BufReader<TcpStream>) -> Self {
         Self {
