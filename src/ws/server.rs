@@ -1,5 +1,22 @@
 use super::*;
 
+
+impl Websocket<SERVER> {
+    pub fn new(stream: BufReader<TcpStream>) -> Self {
+        Self {
+            stream,
+            len: 0,
+            fin: true,
+        }
+    }
+
+    pub async fn recv<'a>(&'a mut self) -> Result<Data> {
+        let ty = self.read_data_frame_header().await?;
+        let mask = Mask::from(read_buf(&mut self.stream).await?);
+        Ok(server::Data { ty, mask, ws: self })
+    }
+}
+
 pub struct Data<'a> {
     pub ty: DataType,
     pub(crate) mask: Mask,
