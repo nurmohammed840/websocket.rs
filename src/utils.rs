@@ -14,7 +14,7 @@ pub async fn read_bytes(
 ) -> Result<usize> {
     let bytes = stream.fill_buf().await?;
     if bytes.is_empty() {
-        return conn_aborted();
+        return Err(conn_aborted());
     }
     let amt = bytes.len().min(len);
     cb(unsafe { bytes.get_unchecked(..amt) });

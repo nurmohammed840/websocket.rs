@@ -35,17 +35,17 @@ impl<const SIDE: bool> Websocket<SIDE> {
 
             if SERVER == SIDE {
                 if !is_masked {
-                    return err("Expected masked frame");
+                    return Err(invalid_data("Expected masked frame"));
                 }
             } else {
                 if is_masked {
-                    return err("Expected unmasked frame");
+                    return Err(invalid_data("Expected unmasked frame"));
                 }
             }
 
             if opcode >= 8 {
                 if !fin || len > 125 {
-                    return err("Control frame MUST have a payload length of 125 bytes or less and MUST NOT be fragmented");
+                    return Err(invalid_data("Control frame MUST have a payload length of 125 bytes or less and MUST NOT be fragmented"));
                 }
 
                 let mut msg = vec![0; len];
@@ -61,16 +61,16 @@ impl<const SIDE: bool> Websocket<SIDE> {
 
                 match opcode {
                     // Close
-                    8 => return conn_closed(),
+                    8 => return Err(conn_closed()),
                     // Ping
                     9 => self.send(Pong(&msg)).await?,
                     // Pong
                     10 => {}
-                    _ => return err("Unknown opcode"),
+                    _ => return Err(invalid_data("Unknown opcode")),
                 }
             } else {
                 if !fin && len == 0 {
-                    return err("Fragment length shouldn't be zero");
+                    return Err(invalid_data("Fragment length shouldn't be zero"));
                 }
                 let len = match len {
                     126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
@@ -85,7 +85,7 @@ impl<const SIDE: bool> Websocket<SIDE> {
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
-            return err("Expected fragment frame");
+            return Err(invalid_data("Expected fragment frame"));
         }
         self.fin = fin;
         self.len = len;
@@ -118,7 +118,7 @@ impl<const SIDE: bool> Websocket<SIDE> {
         let data_type = match opcode {
             1 => DataType::Text,
             2 => DataType::Binary,
-            _ => return err("Expected data frame"),
+            _ => return Err(invalid_data("Expected data frame")),
         };
 
         self.fin = fin;

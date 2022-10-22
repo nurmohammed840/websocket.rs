@@ -3,9 +3,9 @@ mod mask;
 mod utils;
 mod ws;
 
-pub mod http;
 pub mod frame;
 pub mod handshake;
+pub mod http;
 pub use ws::*;
 
 use errors::*;

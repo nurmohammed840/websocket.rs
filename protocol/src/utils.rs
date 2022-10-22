@@ -33,6 +33,7 @@
 //! -  Request may include any other header fields, for example, cookies and/or authentication-related header fields.
 //! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
 
+use sha1::{Digest, Sha1};
 
 /// ## Server handshake response
 ///
@@ -71,7 +72,6 @@
 ///
 /// - Regular HTTP status codes can be used only before the handshake. After the handshake succeeds, you have to use a different set of codes (defined in section 7.4 of the spec)
 pub fn response(key: &str) -> String {
-    use sha1::{Digest, Sha1};
     let mut m = Sha1::new();
     m.update(key.as_bytes());
     m.update(MAGIC_STRING);

@@ -1,26 +1,33 @@
 use super::*;
+use http::{HeaderField, SecWebSocketKey};
 
 impl Websocket<CLIENT> {
-    pub async fn connect(addr: impl ToSocketAddrs, request: impl AsRef<str>) -> Result<Self> {
+    pub async fn connect(addr: impl ToSocketAddrs) -> Result<Self> {
+        Self::connect_with_headers(addr, [("", ""); 0]).await
+    }
+
+    pub async fn connect_with_headers(
+        addr: impl ToSocketAddrs,
+        headers: impl IntoIterator<Item = impl HeaderField>,
+    ) -> Result<Self> {
         let mut stream = TcpStream::connect(addr).await?;
-        stream.write_all(request.as_ref().as_bytes()).await?;
+
+        let request = handshake::request("example.com", "/", headers);
+        stream.write_all(request.as_bytes()).await?;
 
         let mut stream = BufReader::new(stream);
-        let _data = stream.fill_buf().await?;
+        
+        let data = stream.fill_buf().await?;
+        let req = std::str::from_utf8(data)
+            .map_err(invalid_data)?
+            .strip_prefix("HTTP/1.1 101 Switching Protocols\r\n")
+            .ok_or(invalid_data("Invalid HTTP response"))?;
 
-        // use handshake::GetSecKey;
-        // let http_req = std::str::from_utf8(data)
-        //     .map_err(|error| Error::new(ErrorKind::InvalidData, error))?
-        //     .strip_prefix("HTTP/1.1 101 Switching Protocols\r\n")
-        //     .ok_or(Error::new(ErrorKind::InvalidData, "error"))?;
+        let headers = http::headers_from_raw(req);
 
-        // let headers = handshake::http_headers_from_raw(http_req);
-
-        // let _a = headers
-        //     .get_sec_accept_key()
-        //     .ok_or(Error::new(ErrorKind::InvalidData, "error"))?;
-
-        // handshake::sec_accept_key_from(sec_key)
+        let _accept_key = headers
+            .get_sec_ws_accept_key()
+            .ok_or(invalid_data("Couldn't get `Accept-Key` from response"))?;
 
         Ok(Self {
             stream,
