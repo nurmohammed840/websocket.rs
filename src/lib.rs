@@ -12,7 +12,7 @@ use errors::*;
 use mask::*;
 use utils::*;
 
-use std::io;
+use std::io::{Error, ErrorKind, Result};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{TcpStream, ToSocketAddrs},
@@ -36,7 +36,7 @@ pub struct Websocket<const SIDE: bool> {
 }
 
 impl<const SIDE: bool> Websocket<SIDE> {
-    pub async fn send(&mut self, msg: impl Frame) -> io::Result<()> {
+    pub async fn send(&mut self, msg: impl Frame) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
         self.stream.get_mut().write_all(&bytes).await
@@ -44,17 +44,35 @@ impl<const SIDE: bool> Websocket<SIDE> {
 }
 
 impl Websocket<CLIENT> {
-    pub async fn connect(addr: impl ToSocketAddrs) -> io::Result<Self> {
-        let stream = TcpStream::connect(addr).await?;
-        // stream.write_all(src);
+    pub async fn connect(addr: impl ToSocketAddrs, request: impl AsRef<str>) -> Result<Self> {
+        let mut stream = TcpStream::connect(addr).await?;
+        stream.write_all(request.as_ref().as_bytes()).await?;
+
+        let mut stream = BufReader::new(stream);
+        let data = stream.fill_buf().await?;
+
+        use handshake::GetSecKey;
+        let http_req = std::str::from_utf8(data)
+            .map_err(|error| Error::new(ErrorKind::InvalidData, error))?
+            .strip_prefix("HTTP/1.1 101 Switching Protocols\r\n")
+            .ok_or(Error::new(ErrorKind::InvalidData, "error"))?;
+
+        let headers = handshake::http_headers_from_raw(http_req);
+
+        let _a = headers
+            .get_sec_accept_key()
+            .ok_or(Error::new(ErrorKind::InvalidData, "error"))?;
+
+            // handshake::sec_accept_key_from(sec_key)
+
         Ok(Self {
-            stream: BufReader::new(stream),
+            stream,
             len: 0,
             fin: true,
         })
     }
 
-    pub async fn recv<'a>(&'a mut self) -> io::Result<client::Data> {
+    pub async fn recv<'a>(&'a mut self) -> Result<client::Data> {
         Ok(client::Data {
             ty: self.read_data_frame_header().await?,
             ws: self,
@@ -71,7 +89,7 @@ impl Websocket<SERVER> {
         }
     }
 
-    pub async fn recv<'a>(&'a mut self) -> io::Result<server::Data> {
+    pub async fn recv<'a>(&'a mut self) -> Result<server::Data> {
         let ty = self.read_data_frame_header().await?;
         let mask = Mask::from(read_buf(&mut self.stream).await?);
         Ok(server::Data { ty, mask, ws: self })
@@ -81,7 +99,7 @@ impl Websocket<SERVER> {
 // --------------------------------------------------------------------------------
 
 impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
-    async fn header(&mut self) -> io::Result<(bool, u8, usize)> {
+    async fn header(&mut self) -> Result<(bool, u8, usize)> {
         loop {
             let [b1, b2] = read_buf(&mut self.stream).await?;
 
@@ -139,7 +157,7 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
         }
     }
 
-    async fn discard_old_data(&mut self) -> io::Result<()> {
+    async fn discard_old_data(&mut self) -> Result<()> {
         loop {
             if self.len > 0 {
                 let amt = read_bytes(&mut self.stream, self.len, |_| {}).await?;
@@ -157,7 +175,7 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
         }
     }
 
-    async fn read_fragmented_header(&mut self) -> Result<(), io::Error> {
+    async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
             return err("Expected fragment frame");
@@ -168,7 +186,7 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
     }
 
     #[inline]
-    async fn read_data_frame_header(&mut self) -> io::Result<DataType> {
+    async fn read_data_frame_header(&mut self) -> Result<DataType> {
         self.discard_old_data().await?;
 
         let (fin, opcode, len) = self.header().await?;
@@ -208,10 +226,10 @@ impl<const IS_SERVER: bool> Websocket<IS_SERVER> {
 //         println!("{}", res);
 
 //         let mut ws = Websocket::new(BufReader::new(stream));
-        
+
 //         let _ = ws.recv().await?;
 //         let _ = ws.recv().await?;
-        
+
 //         let mut data = ws.recv().await?;
 //         println!("{:?}", data.ty);
 

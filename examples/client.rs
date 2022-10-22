@@ -71,7 +71,6 @@
 
 fn main() {}
 
-
 // use std::io::Result;
 // use web_socket_server::Websocket;
 
@@ -81,7 +80,7 @@ fn main() {}
 //     loop {
 //         let mut data = ws.recv().await?;
 //         println!("{:?}", data.ty);
-        
+
 //         let mut buf = vec![];
 //         data.read_to_end(&mut buf).await?;
 //     }

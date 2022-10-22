@@ -14,12 +14,12 @@ macro_rules! default_impl_for_data {
             }
 
             #[inline]
-            pub async fn send(&mut self, data: impl Frame) -> io::Result<()> {
+            pub async fn send(&mut self, data: impl Frame) -> Result<()> {
                 self.ws.send(data).await
             }
 
             #[inline]
-            pub async fn recv_next(&mut self) -> io::Result<bool> {
+            pub async fn recv_next(&mut self) -> Result<bool> {
                 if self.ws.len > 0 {
                     return Ok(true);
                 }
@@ -33,7 +33,7 @@ macro_rules! default_impl_for_data {
             }
 
             #[inline]
-            pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> io::Result<()> {
+            pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
                 while !buf.is_empty() {
                     match self.read(buf).await? {
                         0 => break,
@@ -42,15 +42,15 @@ macro_rules! default_impl_for_data {
                 }
                 match buf.is_empty() {
                     true => Ok(()),
-                    false => Err(io::Error::new(
-                        io::ErrorKind::UnexpectedEof,
+                    false => Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
                         "failed to fill whole buffer",
                     )),
                 }
             }
 
             #[inline]
-            pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+            pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
                 let len = buf.len();
                 let additional = self.ws.len;
                 buf.reserve(additional);
@@ -70,7 +70,7 @@ macro_rules! default_impl_for_data {
 
 pub(crate) use default_impl_for_data;
 
-pub async fn read_buf<const N: usize>(stream: &mut BufReader<TcpStream>) -> io::Result<[u8; N]> {
+pub async fn read_buf<const N: usize>(stream: &mut BufReader<TcpStream>) -> Result<[u8; N]> {
     let mut buf = [0; N];
     stream.read_exact(&mut buf).await?;
     Ok(buf)
@@ -81,7 +81,7 @@ pub async fn read_bytes(
     stream: &mut BufReader<TcpStream>,
     len: usize,
     cb: impl FnOnce(&[u8]),
-) -> io::Result<usize> {
+) -> Result<usize> {
     let bytes = stream.fill_buf().await?;
     if bytes.is_empty() {
         return conn_aborted();

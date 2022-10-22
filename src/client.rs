@@ -8,12 +8,12 @@ pub struct Data<'a> {
 default_impl_for_data!();
 
 impl<'a> Data<'a> {
-    async fn _next_frag(&mut self) -> io::Result<()> {
+    async fn _next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await
     }
 
     #[inline]
-    pub async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let amt = read_bytes(
             &mut self.ws.stream,
             buf.len().min(self.ws.len),
