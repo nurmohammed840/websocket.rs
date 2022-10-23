@@ -86,7 +86,6 @@ pub enum Opcode {
     Binary = 2,
 
     // 3-7 are reserved for further non-control frames.
-    
     /// - The Close frame MAY contain a body that indicates a reason for closing.
     ///
     /// - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
@@ -121,7 +120,6 @@ pub enum Opcode {
     ///
     ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
     Pong = 10,
-
     // 11-15 are reserved for further control frames
 }
 
@@ -275,7 +273,8 @@ mod tests {
     fn unmasked_ping_req_and_masked_pong_res() {
         let mut c = [
             0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f, // unmasked ping request
-            0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58, // masked pong response
+            0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51,
+            0x58, // masked pong response
         ]
         .as_slice();
         let unmask_ping_req = Header {
@@ -316,5 +315,28 @@ mod tests {
 
         header.len = 65536;
         assert_eq!(header.encode(), [130, 127, 0, 0, 0, 0, 0, 1, 0, 0]);
+    }
+
+    #[test]
+    fn test_data() {
+        let _s: Vec<u8> = vec![
+            // 72, 84, 84, 80, 47, 49, 46, 49, 32, 49, 48, 49, 32, 83, 119, 105, 116, 99, 104, 105,
+            // 110, 103, 32, 80, 114, 111, 116, 111, 99, 111, 108, 115, 13, 10, 117, 112, 103, 114,
+            // 97, 100, 101, 58, 32, 119, 101, 98, 115, 111, 99, 107, 101, 116, 13, 10, 99, 111, 110,
+            // 110, 101, 99, 116, 105, 111, 110, 58, 32, 85, 112, 103, 114, 97, 100, 101, 13, 10, 115,
+            // 101, 99, 45, 119, 101, 98, 115, 111, 99, 107, //
+            101, 116, 45, 97, 99, 99, 101, 112, 116, 58, 32, 122, 78, 74, 100, 82, 89, 53, 65, 56,
+            47, 81, 106, 53, 71, 66, 88, 114, 43, 97, 56, 103, 80, 107, 116, 57, 113, 56, 61, 13,
+            10, 118, 97, 114, 121, 58, 32, 65, 99, 99, 101, 112, 116, 45, 69, 110, 99, 111, 100,
+            105, 110, 103, 13, 10, 100, 97, 116, 101, 58, 32, 83, 117, 110, 44, 32, 50, 51, 32, 79,
+            99, 116, 32, 50, 48, 50, 50, 32, 48, 49, 58, 48, 52, 58, 52, 50, 32, 71, 77, 84, 13,
+            10, 13, 10,
+        ];
+        let mut cursor = &_s[..];
+
+        let data = Header::decoder(&mut cursor).unwrap();
+        println!("{:?}", data);
+        println!("{:?}", data.rsv.0);
+        println!("{:?}", read_slice(&mut cursor, data.len));
     }
 }

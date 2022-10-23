@@ -1,3 +1,6 @@
+[workspace]
+# members = ["protocol"]
+
 [package]
 name = "web-socket"
 version = "0.1.0"
