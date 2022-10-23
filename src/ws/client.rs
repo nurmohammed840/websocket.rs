@@ -19,6 +19,8 @@ impl Websocket<CLIENT> {
         let mut stream = BufReader::new(stream);
 
         let data = stream.fill_buf().await?;
+        let amt = data.len();
+
         let responce = std::str::from_utf8(data)
             .map_err(invalid_data)?
             .strip_prefix("HTTP/1.1 101 Switching Protocols\r\n")
@@ -32,7 +34,9 @@ impl Websocket<CLIENT> {
         if handshake::accept_key_from(sec_key) != accept_key {
             return Err(invalid_data("Invalid accept key"));
         }
-
+        
+        stream.consume(amt);
+        
         Ok(Self {
             stream,
             len: 0,
@@ -87,7 +91,7 @@ mod tests {
 
         let mut buf = vec![];
         data.read_to_end(&mut buf).await?;
-        println!("{:?}", buf);
+        println!("{:?}", String::from_utf8(buf));
         Ok(())
     }
 
