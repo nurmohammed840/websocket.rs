@@ -1,22 +1,41 @@
 use super::*;
 use http::{HeaderField, SecWebSocketKey};
+use std::net::SocketAddr;
+
+fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static str> {
+    let uri = uri.strip_prefix("ws").ok_or("Invalid Websocket URI")?;
+    let (secure, uri) = match uri.strip_prefix("s") {
+        Some(uri) => (true, uri),
+        None => (false, uri),
+    };
+    let uri = uri.strip_prefix("://").ok_or("Invalid Websocket URI")?;
+    let (addr, path) = uri.split_once("/").unwrap_or((uri, ""));
+    Ok((secure, addr, path))
+}
 
 impl Websocket<CLIENT> {
-    pub async fn connect(addr: impl ToSocketAddrs + std::fmt::Display) -> Result<Self> {
-        Self::connect_with_headers(addr, [("", ""); 0]).await
+    pub async fn connect(uri: impl AsRef<str>) -> Result<Self> {
+        Self::connect_with_headers(uri, [("", ""); 0]).await
     }
 
     pub async fn connect_with_headers(
-        addr: impl ToSocketAddrs + std::fmt::Display,
+        uri: impl AsRef<str>,
         headers: impl IntoIterator<Item = impl HeaderField>,
     ) -> Result<Self> {
-        let host = format!("{addr}");
-        let mut stream = TcpStream::connect(addr).await?;
+        let (secure, addr, path) = parse_ws_uri(uri.as_ref()).map_err(invalid_input)?;
+        let default_port = addr.contains(":").then_some("").unwrap_or(match secure {
+            true => ":443",
+            false => ":80",
+        });
 
-        let (request, sec_key) = handshake::request(host, "/", headers);
-        stream.write_all(request.as_bytes()).await?;
+        let addrs: Box<[SocketAddr]> = lookup_host(format!("{addr}{default_port}"))
+            .await?
+            .collect();
 
-        let mut stream = BufReader::new(stream);
+        let mut stream = BufReader::new(TcpStream::connect(&*addrs).await?);
+
+        let (request, sec_key) = handshake::request(addr, path, headers);
+        stream.get_mut().write_all(request.as_bytes()).await?;
 
         let data = stream.fill_buf().await?;
         let amt = data.len();
@@ -34,9 +53,9 @@ impl Websocket<CLIENT> {
         if handshake::accept_key_from(sec_key) != accept_key {
             return Err(invalid_data("Invalid accept key"));
         }
-        
+
         stream.consume(amt);
-        
+
         Ok(Self {
             stream,
             len: 0,
@@ -57,15 +76,13 @@ pub struct Data<'a> {
     pub(crate) ws: &'a mut Websocket<CLIENT>,
 }
 
-default_impl_for_data!();
-
 impl Data<'_> {
     async fn _next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await
     }
 
     #[inline]
-    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let amt = read_bytes(
             &mut self.ws.stream,
             buf.len().min(self.ws.len),
@@ -79,24 +96,4 @@ impl Data<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    async fn test_name() -> Result<()> {
-        let mut ws = Websocket::connect("127.0.0.1:8080").await?;
-        ws.send("msg").await?;
-
-        let mut data = ws.recv().await?;
-
-        let mut buf = vec![];
-        data.read_to_end(&mut buf).await?;
-        println!("{:?}", String::from_utf8(buf));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test() {
-        println!("{:?}", test_name().await);
-    }
-}
+default_impl_for_data!();

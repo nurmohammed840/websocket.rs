@@ -29,6 +29,7 @@ impl<const SIDE: bool> Websocket<SIDE> {
             let [b1, b2] = read_buf(&mut self.stream).await?;
 
             let fin = b1 & 0b_1000_0000 != 0;
+            // let rsv =  b1 & 0b_111_0000;
             let opcode = b1 & 0b_1111;
             let len = (b2 & 0b_111_1111) as usize;
             let is_masked = b2 & 0b_1000_0000 != 0;
@@ -44,8 +45,13 @@ impl<const SIDE: bool> Websocket<SIDE> {
             }
 
             if opcode >= 8 {
-                if !fin || len > 125 {
-                    return Err(invalid_data("Control frame MUST have a payload length of 125 bytes or less and MUST NOT be fragmented"));
+                if !fin {
+                    return Err(invalid_data("Control frame MUST NOT be fragmented"));
+                }
+                if len > 125 {
+                    return Err(invalid_data(
+                        "Control frame MUST have a payload length of 125 bytes or less",
+                    ));
                 }
 
                 let mut msg = vec![0; len];
@@ -131,48 +137,46 @@ macro_rules! default_impl_for_data {
     () => {
         impl Data<'_> {
             #[inline]
-            pub fn len(&self) -> usize {
-                self.ws.len
-            }
-
-            #[inline]
-            pub fn fin(&self) -> bool {
-                self.ws.fin
-            }
-
-            #[inline]
-            pub async fn send(&mut self, data: impl Frame) -> Result<()> {
-                self.ws.send(data).await
-            }
-
-            #[inline]
-            pub async fn recv_next(&mut self) -> Result<bool> {
-                if self.ws.len > 0 {
-                    return Ok(true);
-                }
-                match self.ws.fin {
-                    true => Ok(false),
-                    false => {
-                        self._next_frag().await?;
-                        Ok(true)
+            async fn _has_data(&mut self) -> Result<bool> {
+                if self.ws.len == 0 {
+                    if self.ws.fin {
+                        return Ok(false);
                     }
+                    self._next_frag().await?;
                 }
+                Ok(true)
+            }
+
+            #[inline]
+            pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+                if self._has_data().await? {
+                    return self._read(buf).await;
+                }
+                Ok(0)
             }
 
             #[inline]
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
-                while !buf.is_empty() {
-                    match self.read(buf).await? {
-                        0 => break,
+                loop {
+                    // Let assume `self._read(..)` is expensive, So if the `buf` is empty do nothing.
+                    if buf.is_empty() {
+                        return Ok(());
+                    }
+                    match self._read(buf).await? {
+                        0 => match buf.is_empty() {
+                            true => return Ok(()),
+                            false => {
+                                if self.ws.fin {
+                                    return Err(std::io::Error::new(
+                                        std::io::ErrorKind::UnexpectedEof,
+                                        "failed to fill whole buffer",
+                                    ));
+                                }
+                                self._next_frag().await?;
+                            }
+                        },
                         amt => buf = &mut buf[amt..],
                     }
-                }
-                match buf.is_empty() {
-                    true => Ok(()),
-                    false => Err(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        "failed to fill whole buffer",
-                    )),
                 }
             }
 
@@ -188,6 +192,23 @@ macro_rules! default_impl_for_data {
                     buf.set_len(len + additional);
                 }
                 Ok(additional)
+            }
+        }
+
+        impl Data<'_> {
+            #[inline]
+            pub fn len(&self) -> usize {
+                self.ws.len
+            }
+
+            #[inline]
+            pub fn fin(&self) -> bool {
+                self.ws.fin
+            }
+
+            #[inline]
+            pub async fn send(&mut self, data: impl Frame) -> Result<()> {
+                self.ws.send(data).await
             }
         }
     };

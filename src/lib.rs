@@ -16,8 +16,9 @@ use std::io::Result;
 
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    net::{TcpStream, ToSocketAddrs},
+    net::TcpStream,
 };
+use tokio::net::lookup_host;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DataType {

@@ -32,7 +32,7 @@ impl Data<'_> {
         Ok(())
     }
 
-    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let amt = read_bytes(&mut self.ws.stream, buf.len().min(self.ws.len), |bytes| {
             bytes
                 .iter()
