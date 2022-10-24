@@ -4,6 +4,69 @@ pub trait Frame {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
 }
 
+/// When closing an established connection an endpoint MAY indicate a reason for closure.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
+pub enum CloseCode {
+    /// The purpose for which the connection was established has been fulfilled
+    Normal = 1000,
+    /// Server going down or a browser having navigated away from a page
+    Away = 1001,
+    /// An endpoint is terminating the connection due to a protocol error.
+    ProtocolError = 1002,
+    /// It has received a type of data it cannot accept
+    Unsupported = 1003,
+
+    // reserved 1004
+    /// MUST NOT be set as a status code in a Close control frame by an endpoint.
+    ///
+    /// No status code was actually present.
+    NoStatusRcvd = 1005,
+    /// MUST NOT be set as a status code in a Close control frame by an endpoint.
+    ///
+    /// Connection was closed abnormally.
+    Abnormal = 1006,
+    /// Application has received data within a message that was not consistent with the type of the message.
+    InvalidPayload = 1007,
+    /// This is a generic status code that can be returned when there is no other more suitable status code.
+    PolicyViolation = 1008,
+    /// Message that is too big for it to process.
+    MessageTooBig = 1009,
+    /// It has expected the server to negotiate one or more extension.
+    MandatoryExt = 1010,
+    /// The server has encountered an unexpected condition that prevented it from fulfilling the request.
+    InternalError = 1011,
+    /// MUST NOT be set as a status code in a Close control frame by an endpoint.
+    ///
+    /// The connection was closed due to a failure to perform a TLS handshake.
+    TLSHandshake = 1015,
+}
+
+impl TryFrom<u16> for CloseCode {
+    type Error = &'static str;
+    fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
+        Ok(match value {
+            1000 => CloseCode::Normal,
+            1001 => CloseCode::Away,
+            1002 => CloseCode::ProtocolError,
+            1003 => CloseCode::Unsupported,
+            1005 => CloseCode::NoStatusRcvd,
+            1006 => CloseCode::Abnormal,
+            1007 => CloseCode::InvalidPayload,
+            1008 => CloseCode::PolicyViolation,
+            1009 => CloseCode::MessageTooBig,
+            1010 => CloseCode::MandatoryExt,
+            1011 => CloseCode::InternalError,
+            1015 => CloseCode::TLSHandshake,
+            _ => return Err("Unknown close code")
+        })
+    }
+}
+
+pub struct Close<'a> {
+    pub code: CloseCode,
+    pub reason: &'a [u8],
+}
 pub struct Ping<'a>(pub &'a [u8]);
 pub struct Pong<'a>(pub &'a [u8]);
 
@@ -31,12 +94,20 @@ impl Frame for [u8] {
     }
 }
 
-impl<'a> Frame for Ping<'a> {
+impl Frame for Close<'_> {
+    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
+        writer.extend_from_slice(&(self.code as u16).to_be_bytes());
+        encode::<SIDE, RandMask>(writer, true, 8, self.reason);
+    }
+}
+
+impl Frame for Ping<'_> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         encode::<SIDE, RandMask>(writer, true, 9, self.0);
     }
 }
-impl<'a> Frame for Pong<'a> {
+
+impl Frame for Pong<'_> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         encode::<SIDE, RandMask>(writer, true, 10, self.0);
     }
