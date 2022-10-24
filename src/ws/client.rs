@@ -1,16 +1,17 @@
 use super::*;
-use http::{HeaderField, SecWebSocketKey};
-use std::net::SocketAddr;
+use http::{Header, HeaderField};
 
 fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static str> {
-    let err = "Invalid Websocket URI";
-    let uri = uri.strip_prefix("ws").ok_or(err)?;
-    let (secure, uri) = match uri.strip_prefix("s") {
-        Some(uri) => (true, uri),
-        None => (false, uri),
+    let err_msg = "Invalid Websocket URI";
+    let (schema, addr_uri) = uri.split_once("://").ok_or(err_msg)?;
+    let secure = if schema.eq_ignore_ascii_case("ws") {
+        false
+    } else if schema.eq_ignore_ascii_case("wss") {
+        true
+    } else {
+        return Err(err_msg);
     };
-    let uri = uri.strip_prefix("://").ok_or(err)?;
-    let (addr, path) = uri.split_once("/").unwrap_or((uri, ""));
+    let (addr, path) = addr_uri.split_once("/").unwrap_or((uri, ""));
     Ok((secure, addr, path))
 }
 
@@ -24,38 +25,37 @@ impl Websocket<CLIENT> {
         headers: impl IntoIterator<Item = impl HeaderField>,
     ) -> Result<Self> {
         let (secure, addr, path) = parse_ws_uri(uri.as_ref()).map_err(invalid_input)?;
-        let default_port = addr.contains(":").then_some("").unwrap_or(match secure {
+
+        let port = addr.contains(":").then_some("").unwrap_or(match secure {
             true => ":443",
             false => ":80",
         });
 
-        let addrs: Box<[SocketAddr]> = lookup_host(format!("{addr}{default_port}"))
-            .await?
-            .collect();
-
-        let mut stream = BufReader::new(TcpStream::connect(&*addrs).await?);
+        let mut stream = BufReader::new(TcpStream::connect(format!("{addr}{port}")).await?);
 
         let (request, sec_key) = handshake::request(addr, path, headers);
         stream.get_mut().write_all(request.as_bytes()).await?;
 
         let data = stream.fill_buf().await?;
+        let total_len = data.len(); // total len
 
-        let responce = std::str::from_utf8(data)
-            .map_err(invalid_data)?
-            .strip_prefix("HTTP/1.1 101 Switching Protocols\r\n")
+        let mut bytes = data
+            .strip_prefix(b"HTTP/1.1 101 Switching Protocols")
             .ok_or(invalid_data("Invalid HTTP response"))?;
 
-        let headers = http::headers_from_raw(responce);
-        let accept_key = headers
+        let mut header = Header::default();
+        header.parse_from_raw(&mut bytes).map_err(invalid_data)?;
+
+        let accept_key = header
             .get_sec_ws_accept_key()
             .ok_or(invalid_data("Couldn't get `Accept-Key` from response"))?;
 
-        if handshake::accept_key_from(sec_key) != accept_key {
+        if handshake::accept_key_from(sec_key).as_bytes() != accept_key {
             return Err(invalid_data("Invalid accept key"));
         }
 
-        let amt = data.len();
-        stream.consume(amt);
+        let remaining = bytes.len();
+        stream.consume(total_len - remaining);
 
         Ok(Self {
             stream,
@@ -99,3 +99,19 @@ impl Data<'_> {
 }
 
 default_impl_for_data!();
+
+#[tokio::test]
+async fn test_name() -> Result<()> {
+    let mut ws = Websocket::connect("ws://ws.ifelse.io/").await?;
+    ws.send("Hello, World!").await?;
+
+    let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
+
+    let mut data = ws.recv().await?;
+    println!("{:?}", data.ty);
+
+    let mut buf = vec![];
+    data.read_to_end(&mut buf).await?;
+    assert_eq!(buf, b"Hello, World!");
+    Ok(())
+}

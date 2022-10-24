@@ -28,6 +28,12 @@ impl<const SIDE: bool> Websocket<SIDE> {
         msg.encode::<SIDE>(&mut bytes);
         self.stream.get_mut().write_all(&bytes).await
     }
+
+    pub async fn close(self, code: CloseCode, reason: &[u8]) -> Result<()> {
+        let mut bytes = vec![];
+        Close { code, reason }.encode::<SIDE>(&mut bytes);
+        self.stream.into_inner().write_all(&bytes).await
+    }
 }
 
 impl<const SIDE: bool> Websocket<SIDE> {

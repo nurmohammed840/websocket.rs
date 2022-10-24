@@ -1,6 +1,5 @@
-/// This module contain some utility function to work with http protocol.
-
-use std::collections::HashMap;
+//! This module contain some utility function to work with http protocol.
+use std::ops::Deref;
 
 /// # Example
 ///
@@ -31,57 +30,116 @@ impl<K: std::fmt::Display, V: std::fmt::Display> HeaderField for (K, V) {
     }
 }
 
-/// ### Example
-///
-/// ```rust
-/// let req = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
-/// let headers = web_socket::http::headers_from_raw(req);
-///
-/// assert_eq!(headers.get("upgrade"), Some(&"websocket"));
-/// assert_eq!(headers.get("connection"), Some(&"Upgrade"));
-/// assert_eq!(headers.get("sec-websocket-accept"), Some(&"s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
-/// ```
-pub fn headers_from_raw(str: &str) -> HashMap<String, &str> {
-    str.lines()
-        .filter_map(|line| line.split_once(": "))
-        .map(|(key, val)| (key.to_lowercase(), val))
-        .collect()
+impl HeaderField for httparse::Header<'_> {
+    fn fmt(Self { name, value }: &Self) -> String {
+        format!("{name}: {}\r\n", std::str::from_utf8(value).unwrap_or(""))
+    }
 }
 
 /// ### Example
 ///
 /// ```rust
-/// use web_socket::http::SecWebSocketKey;
+/// let mut bytes = "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n".as_bytes();
+/// let mut header = Header::default();
+/// header.parse_from_raw(&mut bytes).unwrap();
 ///
-/// let req = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
-/// let headers = web_socket::http::headers_from_raw(req);
-///
-/// assert_eq!(headers.get_sec_ws_accept_key(), Some("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+/// assert_eq!(header.get("upgrade"), Some("websocket".as_bytes()));
+/// assert_eq!(header.get_as_str("connection"), Some("Upgrade"));
+/// assert_eq!(header.get_sec_ws_accept_key(), Some("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=".as_bytes()));
 /// ```
-pub trait SecWebSocketKey {
-    fn get_sec_ws_key(&self) -> Option<&str>;
-    fn get_sec_ws_accept_key(&self) -> Option<&str>;
+pub struct Header<'a, const N: usize = 16> {
+    init: usize,
+    inner: [httparse::Header<'a>; N],
 }
 
-impl SecWebSocketKey for HashMap<String, &str> {
-    fn get_sec_ws_key(&self) -> Option<&str> {
-        if is_ws_upgrade_req(&self)? && self.get("sec-websocket-version")?.contains("13") {
-            return self.get("sec-websocket-key").cloned();
+impl Default for Header<'_> {
+    fn default() -> Self {
+        Self {
+            init: 0,
+            inner: [httparse::EMPTY_HEADER; 16],
         }
-        None
-    }
-
-    fn get_sec_ws_accept_key(&self) -> Option<&str> {
-        if is_ws_upgrade_req(&self)? {
-            return self.get("sec-websocket-accept").cloned();
-        }
-        None
     }
 }
 
-fn is_ws_upgrade_req(headers: &HashMap<String, &str>) -> Option<bool> {
-    let is_upgrade = headers.get("upgrade")?.eq_ignore_ascii_case("websocket")
-        && headers.get("connection")?.eq_ignore_ascii_case("upgrade");
+impl<'a, const N: usize> Header<'a, N> {
+    pub const fn new() -> Self {
+        Self {
+            init: 0,
+            inner: [httparse::EMPTY_HEADER; N],
+        }
+    }
 
-    Some(is_upgrade)
+    pub fn get(&self, key: impl AsRef<str>) -> Option<&[u8]> {
+        self.iter()
+            .find(|header| header.name.eq_ignore_ascii_case(key.as_ref()))
+            .map(|field| field.value)
+    }
+
+    fn get_as_str(&self, key: impl AsRef<str>) -> Option<&str> {
+        std::str::from_utf8(self.get(key)?).ok()
+    }
+
+    fn is_ws_upgrade(&self) -> Option<bool> {
+        let upgrade = self
+            .get_as_str("upgrade")?
+            .eq_ignore_ascii_case("websocket");
+
+        let connection = self
+            .get_as_str("connection")?
+            .eq_ignore_ascii_case("upgrade");
+
+        Some(upgrade && connection)
+    }
+
+    pub fn get_sec_ws_key(&self) -> Option<&[u8]> {
+        (self.is_ws_upgrade()? && self.get_as_str("sec-websocket-version")?.contains("13"))
+            .then_some(self.get("sec-websocket-key")?)
+    }
+
+    pub fn get_sec_ws_accept_key(&self) -> Option<&[u8]> {
+        self.is_ws_upgrade()?
+            .then_some(self.get("sec-websocket-accept")?)
+    }
+
+    pub fn parse_from_raw(&mut self, bytes: &mut &'a [u8]) -> std::result::Result<(), String> {
+        *bytes = trim_ascii_start(bytes);
+
+        httparse::parse_headers(bytes, &mut self.inner)
+            .map_err(|err| format!("HTTP Error: {err}"))
+            .and_then(|status| match status {
+                httparse::Status::Partial => Err(format!("HTTP Error: Incomplete http header")),
+                httparse::Status::Complete((amt, init)) => {
+                    *bytes = &bytes[amt..];
+                    self.init = init.len();
+                    Ok(())
+                }
+            })
+    }
+}
+
+impl<'a, const N: usize> std::fmt::Debug for Header<'a, N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Header")
+            .field("capacity", &self.inner.len())
+            .field("fields", &&self[..])
+            .finish()
+    }
+}
+
+impl<'a, const N: usize> Deref for Header<'a, N> {
+    type Target = [httparse::Header<'a>];
+    fn deref(&self) -> &Self::Target {
+        &self.inner[..self.init]
+    }
+}
+
+fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
+    while let [first, rest @ ..] = bytes {
+        if matches!(first, b'\t' | b'\n' | b'\x0C' | b'\r' | b' ') {
+            bytes = rest;
+        } else {
+            break;
+        }
+    }
+    bytes
 }
