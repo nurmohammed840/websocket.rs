@@ -36,7 +36,6 @@ impl<'a> Frame for Ping<'a> {
         encode::<SIDE, RandMask>(writer, true, 9, self.0);
     }
 }
-
 impl<'a> Frame for Pong<'a> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         encode::<SIDE, RandMask>(writer, true, 10, self.0);

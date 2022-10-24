@@ -6,6 +6,7 @@ impl Websocket<SERVER> {
             stream,
             len: 0,
             fin: true,
+            event: Box::new(|_| Ok(())),
         }
     }
 

@@ -3,12 +3,13 @@ use http::{HeaderField, SecWebSocketKey};
 use std::net::SocketAddr;
 
 fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static str> {
-    let uri = uri.strip_prefix("ws").ok_or("Invalid Websocket URI")?;
+    let err = "Invalid Websocket URI";
+    let uri = uri.strip_prefix("ws").ok_or(err)?;
     let (secure, uri) = match uri.strip_prefix("s") {
         Some(uri) => (true, uri),
         None => (false, uri),
     };
-    let uri = uri.strip_prefix("://").ok_or("Invalid Websocket URI")?;
+    let uri = uri.strip_prefix("://").ok_or(err)?;
     let (addr, path) = uri.split_once("/").unwrap_or((uri, ""));
     Ok((secure, addr, path))
 }
@@ -38,7 +39,6 @@ impl Websocket<CLIENT> {
         stream.get_mut().write_all(request.as_bytes()).await?;
 
         let data = stream.fill_buf().await?;
-        let amt = data.len();
 
         let responce = std::str::from_utf8(data)
             .map_err(invalid_data)?
@@ -54,12 +54,14 @@ impl Websocket<CLIENT> {
             return Err(invalid_data("Invalid accept key"));
         }
 
+        let amt = data.len();
         stream.consume(amt);
 
         Ok(Self {
             stream,
             len: 0,
             fin: true,
+            event: Box::new(|_| Ok(())),
         })
     }
 

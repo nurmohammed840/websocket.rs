@@ -7,9 +7,15 @@ pub mod server;
 pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
 
+pub enum Event<'a> {
+    Close { reason: &'a [u8] },
+    Ping(&'a [u8]),
+    Pong(&'a [u8]),
+}
+
 pub struct Websocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,
-
+    pub event: Box<dyn FnMut(Event) -> Result<()>>,
     // this statement is not possible `self.fin == false && self.len == 0`
     fin: bool,
     len: usize,
@@ -69,9 +75,14 @@ impl<const SIDE: bool> Websocket<SIDE> {
                     // Close
                     8 => return Err(conn_closed()),
                     // Ping
-                    9 => self.send(Pong(&msg)).await?,
+                    9 => {
+                        (self.event)(Event::Ping(&msg))?;  
+                        self.send(Pong(&msg)).await?;
+                    },
                     // Pong
-                    10 => {}
+                    10 => {
+                        (self.event)(Event::Pong(&msg))?;  
+                    }
                     _ => return Err(invalid_data("Unknown opcode")),
                 }
             } else {
