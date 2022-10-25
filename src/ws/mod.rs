@@ -7,6 +7,7 @@ pub mod server;
 pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
 
+#[derive(Debug, Clone)]
 pub enum Event<'a> {
     Close { code: CloseCode, reason: &'a [u8] },
     Ping(&'a [u8]),
@@ -42,10 +43,14 @@ impl<const SIDE: bool> Websocket<SIDE> {
             let [b1, b2] = read_buf(&mut self.stream).await?;
 
             let fin = b1 & 0b_1000_0000 != 0;
-            // let rsv =  b1 & 0b_111_0000;
+            let rsv =  b1 & 0b_111_0000;
             let opcode = b1 & 0b_1111;
             let len = (b2 & 0b_111_1111) as usize;
             let is_masked = b2 & 0b_1000_0000 != 0;
+
+            if rsv != 0 {
+                return Err(invalid_data("Reserve bit MUST be `0`"));
+            }
 
             if SERVER == SIDE {
                 if !is_masked {
@@ -215,6 +220,11 @@ macro_rules! default_impl_for_data {
                     buf.set_len(len + additional);
                 }
                 Ok(additional)
+            }
+
+            #[inline]
+            pub async fn read_to_end_with_limit(&mut self, _buf: &mut Vec<u8>) -> Result<usize> {
+                todo!()
             }
         }
 

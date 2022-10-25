@@ -25,7 +25,6 @@ impl Websocket<CLIENT> {
         headers: impl IntoIterator<Item = impl HeaderField>,
     ) -> Result<Self> {
         let (secure, addr, path) = parse_ws_uri(uri.as_ref()).map_err(invalid_input)?;
-
         let port = addr.contains(":").then_some("").unwrap_or(match secure {
             true => ":443",
             false => ":80",
@@ -37,7 +36,7 @@ impl Websocket<CLIENT> {
         stream.get_mut().write_all(request.as_bytes()).await?;
 
         let data = stream.fill_buf().await?;
-        let total_len = data.len(); // total len
+        let total_len = data.len();
 
         let mut bytes = data
             .strip_prefix(b"HTTP/1.1 101 Switching Protocols")
@@ -100,18 +99,25 @@ impl Data<'_> {
 
 default_impl_for_data!();
 
-#[tokio::test]
-async fn test_name() -> Result<()> {
-    let mut ws = Websocket::connect("ws://ws.ifelse.io/").await?;
-    ws.send("Hello, World!").await?;
 
-    let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
+// #[tokio::test]
+// async fn test_name() -> Result<()> {
+//     let mut ws = Websocket::connect("ws://ws.ifelse.io/").await?;
 
-    let mut data = ws.recv().await?;
-    println!("{:?}", data.ty);
+//     ws.event = Box::new(|ev|{
+//         println!("{:?}", ev);
+//         Ok(())
+//     });
 
-    let mut buf = vec![];
-    data.read_to_end(&mut buf).await?;
-    assert_eq!(buf, b"Hello, World!");
-    Ok(())
-}
+//     ws.send(crate::frame::Ping(b"Hello, World")).await?;
+
+//     // let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
+
+//     let mut data = ws.recv().await?;
+//     println!("{:?}", data.ty);
+
+//     let mut buf = vec![];
+//     data.read_to_end(&mut buf).await?;
+//     println!("{:?}", String::from_utf8(buf));
+//     Ok(())
+// }

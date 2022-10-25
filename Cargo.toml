@@ -7,9 +7,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.21", features = ["full"] }
-
+tokio = { version = "1.21", features = ["io-util", "net"] }
 sha-1 = "0.10"
 base64 = "0.13"
 fastrand = "1.8"
 httparse = "1"
+
+[dev-dependencies]
+tokio = { features = ["macros", "rt"] }
