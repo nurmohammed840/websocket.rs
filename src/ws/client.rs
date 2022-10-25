@@ -1,5 +1,5 @@
 use super::*;
-use http::{Header, HeaderField};
+use http::HeaderField;
 
 fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static str> {
     let err_msg = "Invalid Websocket URI";
@@ -35,21 +35,19 @@ impl Websocket<CLIENT> {
         let (request, sec_key) = handshake::request(addr, path, headers);
         stream.get_mut().write_all(request.as_bytes()).await?;
 
-        let data = stream.fill_buf().await?;
-        let total_len = data.len();
+        let mut bytes = stream.fill_buf().await?;
+        let total_len = bytes.len();
 
-        let mut bytes = data
-            .strip_prefix(b"HTTP/1.1 101 Switching Protocols")
-            .ok_or(invalid_data("Invalid HTTP response"))?;
+        let header = http::Record::from_raw(&mut bytes).map_err(invalid_data)?;
+        if header.schema != b"HTTP/1.1 101 Switching Protocols" {
+            return Err(invalid_data("Invalid HTTP response"));
+        }
 
-        let mut header = Header::default();
-        header.parse_from_raw(&mut bytes).map_err(invalid_data)?;
-
-        let accept_key = header
+        if header
             .get_sec_ws_accept_key()
-            .ok_or(invalid_data("Couldn't get `Accept-Key` from response"))?;
-
-        if handshake::accept_key_from(sec_key).as_bytes() != accept_key {
+            .ok_or(invalid_data("Couldn't get `Accept-Key` from response"))?
+            != handshake::accept_key_from(sec_key).as_bytes()
+        {
             return Err(invalid_data("Invalid accept key"));
         }
 
@@ -99,19 +97,19 @@ impl Data<'_> {
 
 default_impl_for_data!();
 
-
 // #[tokio::test]
 // async fn test_name() -> Result<()> {
 //     let mut ws = Websocket::connect("ws://ws.ifelse.io/").await?;
-
-//     ws.event = Box::new(|ev|{
+//     ws.event = Box::new(|ev| {
 //         println!("{:?}", ev);
 //         Ok(())
 //     });
 
 //     ws.send(crate::frame::Ping(b"Hello, World")).await?;
 
-//     // let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
+//     let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
+
+//     ws.send("Hello, World").await?;
 
 //     let mut data = ws.recv().await?;
 //     println!("{:?}", data.ty);
