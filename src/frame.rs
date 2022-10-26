@@ -64,11 +64,9 @@ impl TryFrom<u16> for CloseCode {
 }
 
 pub struct Close<'a> {
-    pub code: CloseCode,
+    pub code: u16,
     pub reason: &'a [u8],
 }
-pub struct Ping<'a>(pub &'a [u8]);
-pub struct Pong<'a>(pub &'a [u8]);
 
 impl<T: Frame + ?Sized> Frame for &T {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
@@ -96,22 +94,21 @@ impl Frame for [u8] {
 
 impl Frame for Close<'_> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&(self.code as u16).to_be_bytes());
+        writer.extend_from_slice(&self.code.to_be_bytes());
         encode::<SIDE, RandMask>(writer, true, 8, self.reason);
     }
 }
 
-impl Frame for Ping<'_> {
+impl Frame for Event<'_> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        encode::<SIDE, RandMask>(writer, true, 9, self.0);
+        match self {
+            Event::Ping(data) => encode::<SIDE, RandMask>(writer, true, 9, data),
+            Event::Pong(data) => encode::<SIDE, RandMask>(writer, true, 10, data),
+        }
     }
 }
 
-impl Frame for Pong<'_> {
-    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        encode::<SIDE, RandMask>(writer, true, 10, self.0);
-    }
-}
+
 
 #[inline]
 fn encode<const SIDE: bool, Mask: RandKeys>(

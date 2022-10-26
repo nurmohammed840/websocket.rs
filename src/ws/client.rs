@@ -58,7 +58,7 @@ impl Websocket<CLIENT> {
             stream,
             len: 0,
             fin: true,
-            event: Box::new(|_| Ok(())),
+            on_event: Box::new(|_| Ok(())),
         })
     }
 
