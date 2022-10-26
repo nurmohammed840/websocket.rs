@@ -76,7 +76,7 @@ pub struct Data<'a> {
 }
 
 impl Data<'_> {
-    async fn _next_frag(&mut self) -> Result<()> {
+    async fn _read_next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await
     }
 

@@ -17,7 +17,6 @@ pub struct Websocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,
     pub on_event: Box<dyn FnMut(Event) -> Result<()>>,
 
-    // this statement is not possible `self.fin == false && self.len == 0`
     fin: bool,
     len: usize,
 }
@@ -113,6 +112,8 @@ impl<const SIDE: bool> Websocket<SIDE> {
         }
     }
 
+    /// After call this function.
+    /// this statement is not possible `self.fin == false && self.len == 0`
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
@@ -163,22 +164,14 @@ macro_rules! default_impl_for_data {
     () => {
         impl Data<'_> {
             #[inline]
-            async fn _has_data(&mut self) -> Result<bool> {
-                if self.ws.len == 0 {
-                    if self.ws.fin {
-                        return Ok(false);
-                    }
-                    self._next_frag().await?;
-                }
-                Ok(true)
-            }
-
-            #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-                if self._has_data().await? {
-                    return self._read(buf).await;
+                if self.len() == 0 {
+                    if self.ws.fin {
+                        return Ok(0);
+                    }
+                    self._read_next_frag().await?;
                 }
-                Ok(0)
+                self._read(buf).await
             }
 
             #[inline]
@@ -198,7 +191,7 @@ macro_rules! default_impl_for_data {
                                         "failed to fill whole buffer",
                                     );
                                 }
-                                self._next_frag().await?;
+                                self._read_next_frag().await?;
                             }
                         },
                         amt => buf = &mut buf[amt..],
@@ -208,43 +201,33 @@ macro_rules! default_impl_for_data {
 
             #[inline]
             pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
-                let len = buf.len();
-                let additional = self.ws.len;
-                buf.reserve(additional);
-                unsafe {
-                    let end = buf.as_mut_ptr().add(len);
-                    let mut uninit = std::slice::from_raw_parts_mut(end, additional);
-                    self.read_exact(&mut uninit).await?;
-                    buf.set_len(len + additional);
-                }
-                Ok(additional)
+                self.read_to_end_with_limit(buf, 8 * 1024 * 1024).await
             }
 
-            #[inline]
             pub async fn read_to_end_with_limit(
                 &mut self,
                 buf: &mut Vec<u8>,
                 limit: usize,
             ) -> Result<usize> {
-                let mut read_amt = 0;
+                let mut amt = 0;
                 loop {
-                    let len = buf.len();
-                    if len > limit {
+                    let additional = self.len();
+                    amt +=  additional;
+                    if amt > limit {
                         return err(ErrorKind::Other, "Data read limit exceeded");
                     }
-                    let additional = self.ws.len;
-                    buf.reserve(additional);
                     unsafe {
-                        let end = buf.as_mut_ptr().add(len);
-                        let mut uninit = std::slice::from_raw_parts_mut(end, additional);
+                        buf.reserve(additional);
+                        let len = buf.len();
+                        let mut uninit = std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(len), additional);
                         self.read_exact(&mut uninit).await?;
                         buf.set_len(len + additional);
                     }
-                    read_amt += additional;
+                    debug_assert!(self.len() == 0);
                     if self.fin() {
-                        return Ok(read_amt);
+                        return Ok(amt);
                     }
-                    self._next_frag().await?;
+                    self._read_next_frag().await?;
                 }
             }
         }
