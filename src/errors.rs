@@ -1,6 +1,15 @@
-use std::io::{Error, ErrorKind};
+use std::io::Error;
+pub use std::io::ErrorKind;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
+
+pub fn err<T>(kind: ErrorKind, msg: impl Into<DynErr>) -> std::io::Result<T> {
+    Err(Error::new(kind, msg))
+}
+
+pub fn proto_err<T>(msg: impl Into<DynErr>) -> std::io::Result<T> {
+    err(ErrorKind::InvalidData, msg)
+}
 
 pub fn invalid_data(msg: impl Into<DynErr>) -> Error {
     Error::new(ErrorKind::InvalidData, msg)
@@ -8,12 +17,4 @@ pub fn invalid_data(msg: impl Into<DynErr>) -> Error {
 
 pub fn invalid_input(msg: impl Into<DynErr>) -> Error {
     Error::new(ErrorKind::InvalidInput, msg)
-}
-
-pub fn conn_aborted() -> Error {
-    Error::new(ErrorKind::ConnectionAborted, "The connection was aborted")
-}
-
-pub fn conn_closed() -> Error {
-    Error::new(ErrorKind::NotConnected, "The connection was closed")
 }

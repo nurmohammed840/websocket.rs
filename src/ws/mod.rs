@@ -29,11 +29,9 @@ impl<const SIDE: bool> Websocket<SIDE> {
         self.stream.get_mut().write_all(&bytes).await
     }
 
-    pub async fn close(self, code: CloseCode, reason: &[u8]) -> Result<()> {
+    pub async fn close(mut self, code: CloseCode, reason: &[u8]) -> Result<()> {
         let code = code as u16;
-        let mut bytes = vec![];
-        Close { code, reason }.encode::<SIDE>(&mut bytes);
-        self.stream.into_inner().write_all(&bytes).await
+        self.send(Close { code, reason }).await
     }
 }
 
@@ -43,33 +41,33 @@ impl<const SIDE: bool> Websocket<SIDE> {
             let [b1, b2] = read_buf(&mut self.stream).await?;
 
             let fin = b1 & 0b_1000_0000 != 0;
-            let rsv =  b1 & 0b_111_0000;
+            let rsv = b1 & 0b_111_0000;
             let opcode = b1 & 0b_1111;
             let len = (b2 & 0b_111_1111) as usize;
             let is_masked = b2 & 0b_1000_0000 != 0;
 
             if rsv != 0 {
-                return Err(invalid_data("Reserve bit MUST be `0`"));
+                return proto_err("Reserve bit MUST be `0`");
             }
 
             if SERVER == SIDE {
                 if !is_masked {
-                    return Err(invalid_data("Expected masked frame"));
+                    return proto_err("Expected masked frame");
                 }
             } else {
                 if is_masked {
-                    return Err(invalid_data("Expected unmasked frame"));
+                    return proto_err("Expected unmasked frame");
                 }
             }
 
             if opcode >= 8 {
                 if !fin {
-                    return Err(invalid_data("Control frame MUST NOT be fragmented"));
+                    return proto_err("Control frame MUST NOT be fragmented");
                 }
                 if len > 125 {
-                    return Err(invalid_data(
+                    return proto_err(
                         "Control frame MUST have a payload length of 125 bytes or less",
-                    ));
+                    );
                 }
 
                 let mut msg = vec![0; len];
@@ -88,8 +86,9 @@ impl<const SIDE: bool> Websocket<SIDE> {
                     8 => {
                         let code = u16::from_be_bytes([msg[0], msg[1]]);
                         let reason = &msg[2..];
-                        self.send(Close{ code, reason }).await?;
-                        return Err(conn_closed());
+                        self.send(Close { code, reason }).await?;
+                        self.stream.get_mut().shutdown().await?;
+                        return err(ErrorKind::NotConnected, "The connection was closed");
                     }
                     // Ping
                     9 => {
@@ -98,11 +97,11 @@ impl<const SIDE: bool> Websocket<SIDE> {
                     }
                     // Pong
                     10 => (self.on_event)(Event::Pong(&msg))?,
-                    _ => return Err(invalid_data("Unknown opcode")),
+                    _ => return proto_err("Unknown opcode"),
                 }
             } else {
                 if !fin && len == 0 {
-                    return Err(invalid_data("Fragment length shouldn't be zero"));
+                    return proto_err("Fragment length shouldn't be zero");
                 }
                 let len = match len {
                     126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
@@ -117,7 +116,7 @@ impl<const SIDE: bool> Websocket<SIDE> {
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
-            return Err(invalid_data("Expected fragment frame"));
+            return proto_err("Expected fragment frame");
         }
         self.fin = fin;
         self.len = len;
@@ -128,6 +127,7 @@ impl<const SIDE: bool> Websocket<SIDE> {
         loop {
             if self.len > 0 {
                 let amt = read_bytes(&mut self.stream, self.len, |_| {}).await?;
+                debug_assert!(amt != 0);
                 self.len -= amt;
                 continue;
             }
@@ -150,7 +150,7 @@ impl<const SIDE: bool> Websocket<SIDE> {
         let data_type = match opcode {
             1 => DataType::Text,
             2 => DataType::Binary,
-            _ => return Err(invalid_data("Expected data frame")),
+            _ => return proto_err("Expected data frame"),
         };
 
         self.fin = fin;
@@ -192,11 +192,11 @@ macro_rules! default_impl_for_data {
                         0 => match buf.is_empty() {
                             true => return Ok(()),
                             false => {
-                                if self.ws.fin {
-                                    return Err(std::io::Error::new(
-                                        std::io::ErrorKind::UnexpectedEof,
+                                if self.fin() {
+                                    return err(
+                                        ErrorKind::UnexpectedEof,
                                         "failed to fill whole buffer",
-                                    ));
+                                    );
                                 }
                                 self._next_frag().await?;
                             }
@@ -221,8 +221,31 @@ macro_rules! default_impl_for_data {
             }
 
             #[inline]
-            pub async fn read_to_end_with_limit(&mut self, _buf: &mut Vec<u8>) -> Result<usize> {
-                todo!()
+            pub async fn read_to_end_with_limit(
+                &mut self,
+                buf: &mut Vec<u8>,
+                limit: usize,
+            ) -> Result<usize> {
+                let mut read_amt = 0;
+                loop {
+                    let len = buf.len();
+                    if len > limit {
+                        return err(ErrorKind::Other, "Data read limit exceeded");
+                    }
+                    let additional = self.ws.len;
+                    buf.reserve(additional);
+                    unsafe {
+                        let end = buf.as_mut_ptr().add(len);
+                        let mut uninit = std::slice::from_raw_parts_mut(end, additional);
+                        self.read_exact(&mut uninit).await?;
+                        buf.set_len(len + additional);
+                    }
+                    read_amt += additional;
+                    if self.fin() {
+                        return Ok(read_amt);
+                    }
+                    self._next_frag().await?;
+                }
             }
         }
 

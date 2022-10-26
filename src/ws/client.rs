@@ -40,7 +40,7 @@ impl Websocket<CLIENT> {
 
         let header = http::Record::from_raw(&mut bytes).map_err(invalid_data)?;
         if header.schema != b"HTTP/1.1 101 Switching Protocols" {
-            return Err(invalid_data("Invalid HTTP response"));
+            return proto_err("Invalid HTTP response");
         }
 
         if header
@@ -48,7 +48,7 @@ impl Websocket<CLIENT> {
             .ok_or(invalid_data("Couldn't get `Accept-Key` from response"))?
             != handshake::accept_key_from(sec_key).as_bytes()
         {
-            return Err(invalid_data("Invalid accept key"));
+            return proto_err("Invalid accept key");
         }
 
         let remaining = bytes.len();
