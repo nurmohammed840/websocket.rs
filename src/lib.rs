@@ -1,12 +1,13 @@
 mod errors;
+mod frame;
 mod mask;
 mod utils;
 mod ws;
 
-pub mod frame;
 pub mod handshake;
 pub mod http;
 pub use ws::*;
+pub use frame::*;
 
 use errors::*;
 use mask::*;

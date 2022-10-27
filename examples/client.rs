@@ -69,7 +69,8 @@
 //     Ok(())
 // }
 
-fn main() {}
+fn main() {
+}
 
 // use std::io::Result;
 // use web_socket_server::Websocket;
@@ -85,3 +86,27 @@ fn main() {}
 //         data.read_to_end(&mut buf).await?;
 //     }
 // }
+
+// #[tokio::test]
+// async fn test_name() -> Result<()> {
+//     let mut ws = Websocket::connect("ws://ws.ifelse.io/").await?;
+//     ws.event = Box::new(|ev| {
+//         println!("{:?}", ev);
+//         Ok(())
+//     });
+
+//     ws.send(crate::frame::Ping(b"Hello, World")).await?;
+
+//     let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
+
+//     ws.send("Hello, World").await?;
+
+//     let mut data = ws.recv().await?;
+//     println!("{:?}", data.ty);
+
+//     let mut buf = vec![];
+//     data.read_to_end(&mut buf).await?;
+//     println!("{:?}", String::from_utf8(buf));
+//     Ok(())
+// }
+

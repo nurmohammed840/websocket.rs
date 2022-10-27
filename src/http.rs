@@ -133,7 +133,7 @@ fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
     bytes
 }
 
-pub fn trim_ascii_end(mut bytes: &[u8]) -> &[u8] {
+fn trim_ascii_end(mut bytes: &[u8]) -> &[u8] {
     while let [rest @ .., last] = bytes {
         if last.is_ascii_whitespace() {
             bytes = rest;

@@ -63,7 +63,7 @@ impl TryFrom<u16> for CloseCode {
     }
 }
 
-pub struct Close<'a> {
+pub(crate) struct Close<'a> {
     pub code: u16,
     pub reason: &'a [u8],
 }
