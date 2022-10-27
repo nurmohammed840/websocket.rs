@@ -63,10 +63,8 @@ impl Websocket<CLIENT> {
     }
 
     pub async fn recv<'a>(&'a mut self) -> Result<Data> {
-        Ok(client::Data {
-            ty: self.read_data_frame_header().await?,
-            ws: self,
-        })
+        let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
+        Ok(client::Data { ty, ws: self })
     }
 }
 
@@ -96,26 +94,3 @@ impl Data<'_> {
 }
 
 default_impl_for_data!();
-
-// #[tokio::test]
-// async fn test_name() -> Result<()> {
-//     let mut ws = Websocket::connect("ws://ws.ifelse.io/").await?;
-//     ws.event = Box::new(|ev| {
-//         println!("{:?}", ev);
-//         Ok(())
-//     });
-
-//     ws.send(crate::frame::Ping(b"Hello, World")).await?;
-
-//     let _ = ws.recv().await?; // ignore first message : Request served by 33ed2ee9
-
-//     ws.send("Hello, World").await?;
-
-//     let mut data = ws.recv().await?;
-//     println!("{:?}", data.ty);
-
-//     let mut buf = vec![];
-//     data.read_to_end(&mut buf).await?;
-//     println!("{:?}", String::from_utf8(buf));
-//     Ok(())
-// }

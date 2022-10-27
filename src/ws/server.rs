@@ -11,8 +11,11 @@ impl Websocket<SERVER> {
     }
 
     pub async fn recv<'a>(&'a mut self) -> Result<Data> {
-        let ty = self.read_data_frame_header().await?;
-        let mask = Mask::from(read_buf(&mut self.stream).await?);
+        let (ty, mask) = cls_if_err!(self, {
+            let ty = self.read_data_frame_header().await?;
+            let mask = Mask::from(read_buf(&mut self.stream).await?);
+            Result::<_>::Ok((ty, mask))
+        })?;
         Ok(server::Data { ty, mask, ws: self })
     }
 }

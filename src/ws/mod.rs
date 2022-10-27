@@ -160,43 +160,58 @@ impl<const SIDE: bool> Websocket<SIDE> {
     }
 }
 
+macro_rules! cls_if_err {
+    [$ws:expr, $code:expr] => {
+        match $code {
+            Ok(val) => Ok(val),
+            Err(err) => {
+                $ws.stream.get_mut().shutdown().await?;
+                Err(err)
+            }
+        }
+    };
+}
+macro_rules! read_exect {
+    [$this:expr, $buf:expr, $code:expr] => {
+        loop {
+            // Let assume `self._read(..)` is expensive, So if the `buf` is empty do nothing.
+            if $buf.is_empty() { break }
+            match $this._read($buf).await? {
+                0 => match $buf.is_empty() {
+                    true => break,
+                    false => $code,
+                },
+                amt => $buf = &mut $buf[amt..],
+            }
+        }
+    };
+}
+
 macro_rules! default_impl_for_data {
     () => {
         impl Data<'_> {
             #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-                if self.len() == 0 {
-                    if self.ws.fin {
-                        return Ok(0);
+                cls_if_err!(self.ws, {
+                    if self.len() == 0 {
+                        if self.ws.fin {
+                            return Ok(0);
+                        }
+                        self._read_next_frag().await?;
                     }
-                    self._read_next_frag().await?;
-                }
-                self._read(buf).await
+                    self._read(buf).await
+                })
             }
 
-            #[inline]
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
-                loop {
-                    // Let assume `self._read(..)` is expensive, So if the `buf` is empty do nothing.
-                    if buf.is_empty() {
-                        return Ok(());
-                    }
-                    match self._read(buf).await? {
-                        0 => match buf.is_empty() {
-                            true => return Ok(()),
-                            false => {
-                                if self.fin() {
-                                    return err(
-                                        ErrorKind::UnexpectedEof,
-                                        "failed to fill whole buffer",
-                                    );
-                                }
-                                self._read_next_frag().await?;
-                            }
-                        },
-                        amt => buf = &mut buf[amt..],
-                    }
-                }
+                cls_if_err!(self.ws, {
+                    Ok(read_exect!(self, buf, {
+                        if self.fin() {
+                            return err(ErrorKind::UnexpectedEof, "failed to fill whole buffer");
+                        }
+                        self._read_next_frag().await?;
+                    }))
+                })
             }
 
             #[inline]
@@ -209,26 +224,36 @@ macro_rules! default_impl_for_data {
                 buf: &mut Vec<u8>,
                 limit: usize,
             ) -> Result<usize> {
-                let mut amt = 0;
-                loop {
-                    let additional = self.len();
-                    amt +=  additional;
-                    if amt > limit {
-                        return err(ErrorKind::Other, "Data read limit exceeded");
+                cls_if_err!(self.ws, {
+                    let mut amt = 0;
+                    loop {
+                        let additional = self.len();
+                        amt += additional;
+                        if amt > limit {
+                            return err(ErrorKind::Other, "Data read limit exceeded");
+                        }
+                        unsafe {
+                            buf.reserve(additional);
+                            let len = buf.len();
+                            let mut uninit = std::slice::from_raw_parts_mut(
+                                buf.as_mut_ptr().add(len),
+                                additional,
+                            );
+                            read_exect!(self, uninit, {
+                                return err(
+                                    ErrorKind::UnexpectedEof,
+                                    "failed to fill whole buffer",
+                                );
+                            });
+                            buf.set_len(len + additional);
+                        }
+                        debug_assert!(self.len() == 0);
+                        if self.fin() {
+                            break Ok(amt);
+                        }
+                        self._read_next_frag().await?;
                     }
-                    unsafe {
-                        buf.reserve(additional);
-                        let len = buf.len();
-                        let mut uninit = std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(len), additional);
-                        self.read_exact(&mut uninit).await?;
-                        buf.set_len(len + additional);
-                    }
-                    debug_assert!(self.len() == 0);
-                    if self.fin() {
-                        return Ok(amt);
-                    }
-                    self._read_next_frag().await?;
-                }
+                })
             }
         }
 
@@ -251,4 +276,6 @@ macro_rules! default_impl_for_data {
     };
 }
 
+pub(super) use cls_if_err;
 pub(super) use default_impl_for_data;
+pub(super) use read_exect;
