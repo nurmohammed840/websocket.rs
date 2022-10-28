@@ -3,20 +3,14 @@ mod utils;
 use std::{io::Result, str};
 use tokio::{io::AsyncReadExt, net::TcpListener, spawn};
 use utils::upgrade_websocket;
-use web_socket::{WebSocket, CloseCode};
+use web_socket::{CloseCode, WebSocket};
 
 fn main() -> Result<()> {
     utils::block_on(async {
         let server = spawn(server());
         let client = spawn(client());
-
-        let server_status = server.await?;
-        let client_status = client.await?;
-
-        println!("\n\n-------------- Closing Status --------------");
-        println!("Server Closed: {:?}", server_status);
-        println!("Client Closed: {:?}", client_status);
-        Ok(())
+        let _ = server.await?; // ignore close event
+        client.await?
     })
 }
 
@@ -38,20 +32,13 @@ async fn server() -> Result<()> {
 
     let mut buf = [0; 8096];
     let amt = stream.read(&mut buf).await?;
-    let request = &buf[..amt];
+    println!("{}", str::from_utf8(&buf[..amt]).unwrap());
 
-    println!("{}", str::from_utf8(request).unwrap());
-
-    let mut ws = upgrade_websocket(request, stream).await?;
-
+    let mut ws = upgrade_websocket(&buf[..amt], stream).await?;
     ws.send("Hello, World!").await?;
-    
-    println!("Client: {}", read_msg!(ws));
-    
     loop {
         println!("Client: {}", read_msg!(ws));
     }
-    // Ok(())
 }
 
 async fn client() -> Result<()> {
@@ -61,5 +48,5 @@ async fn client() -> Result<()> {
     println!("Server: {}", read_msg!(ws));
     ws.send("Hi there!").await?;
     ws.send("Bye!").await?;
-    ws.close(CloseCode::Normal, "...").await
+    ws.close(CloseCode::Normal, "").await
 }

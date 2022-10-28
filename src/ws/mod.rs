@@ -115,7 +115,7 @@ impl<const SIDE: bool> WebSocket<SIDE> {
         }
     }
 
-    /// After call this function.
+    /// After calling this function.
     /// this statement is not possible `self.fin == false && self.len == 0`
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
