@@ -1,20 +1,61 @@
 mod utils;
-use std::{
-    env,
-    io::{Error, ErrorKind, Result},
-};
-use tokio::net::{TcpListener, TcpStream};
 use utils::ws;
-use web_socket::{DataType, Event};
+
+use std::io::{ErrorKind, Result};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    spawn,
+};
+use web_socket::{CloseCode, DataType, Event, WebSocket};
+
+const USAGE: &str = r#"
+USAGE:
+    <COMMAND>: Data
+
+COMMAND:
+    text, send, msg             Send text message
+    ping                        Send ping frame
+    pong                        Send pong frame
+    quit, exit, close           Close connection
+
+"#;
+
+async fn client(uri: String) -> Result<()> {
+    let mut ws = WebSocket::connect(uri).await?;
+    println!("[Client] Connected to {}", ws.stream.get_ref().peer_addr()?);
+
+    ws.on_event = Box::new(|ev| on_event(ev, "[ECHO]"));
+
+    let stdin = std::io::stdin();
+    let mut buf = String::new();
+
+    let msg = loop {
+        buf.clear();
+        stdin.read_line(&mut buf)?;
+        let (cmd, msg) = buf.split_once(":").unwrap_or(("help", ""));
+        let msg = msg.trim();
+        match cmd {
+            "text" | "send" | "msg" => {
+                ws.send(msg).await?;
+                println!("[ECHO] Text: {}", ws::read_msg!(ws)?);
+            }
+            "ping" => ws.send(Event::Ping(msg.as_bytes())).await?,
+            "pong" => ws.send(Event::Pong(msg.as_bytes())).await?,
+            "quit" | "exit" | "close" => break msg,
+            _ => {
+                println!("{USAGE}");
+                continue;
+            }
+        }
+    };
+    ws.close(CloseCode::Normal, msg).await
+}
 
 async fn handeler(stream: TcpStream) -> Result<()> {
+    let addr = stream.peer_addr()?;
     let mut ws = ws::upgrade(stream).await?;
-    ws.on_event = Box::new(|ev| {
-        Ok(match ev {
-            Event::Ping(_) => println!("Ping: {ev}"),
-            Event::Pong(_) => println!("Pong: {ev}"),
-        })
-    });
+    ws.on_event = Box::new(move |ev| on_event(ev, &format!("From: {addr}; ")));
+
     loop {
         let mut data = ws.recv().await?;
 
@@ -22,19 +63,25 @@ async fn handeler(stream: TcpStream) -> Result<()> {
         data.read_to_end(&mut msg).await?;
 
         match data.ty {
-            DataType::Text => match String::from_utf8(msg) {
-                Ok(msg) => {
-                    println!("Text: {:?}", msg);
-                    ws.send(&*msg).await?;
-                }
-                Err(err) => return Err(Error::new(ErrorKind::InvalidData, err)),
-            },
+            DataType::Text => {
+                let msg = String::from_utf8(msg).unwrap();
+                println!("From: {addr}; Text: {msg:?}");
+                ws.send(&*msg).await?;
+            }
             DataType::Binary => {
-                println!("Binary: {:?}", msg);
+                println!("From: {addr}; Data: {msg:#?}");
                 ws.send(&*msg).await?;
             }
         }
     }
+}
+
+fn on_event(ev: Event, pre: &str) -> Result<()> {
+    match ev {
+        Event::Ping(_) => println!("{pre} Ping: {ev}"),
+        Event::Pong(_) => println!("{pre} Pong: {ev}"),
+    }
+    Ok(())
 }
 
 async fn server(addr: String) -> Result<()> {
@@ -42,23 +89,28 @@ async fn server(addr: String) -> Result<()> {
     println!("[Server] Listening at {}", listener.local_addr()?);
     loop {
         let (stream, addr) = listener.accept().await?;
-        let error = handeler(stream).await.err().unwrap();
-        match error.kind() {
-            ErrorKind::NotConnected => println!("Peer {addr} closed successfully."),
-            _ => println!("Disconnecting peer {addr}, Cause: {error:#}"),
-        }
+        spawn(async move {
+            let ev = handeler(stream).await.err().unwrap();
+            match ev.kind() {
+                ErrorKind::NotConnected => println!("Peer {addr} closed successfully."),
+                _ => println!("Disconnecting peer {addr}, Cause: {ev:#}"),
+            }
+        });
     }
 }
 
 fn main() {
-    let mut args = env::args();
+    let mut args = std::env::args();
     match args.nth(1).as_deref() {
-        Some("server" | "-s") => {
+        Some("server" | "-s" | "--server") => {
             let host = args.next().unwrap_or("0.0.0.0".into());
             let port = host.contains(":").then_some("").unwrap_or(":80");
             let _ = utils::block_on(server(format!("{host}{port}")));
         }
-        Some("client" | "-c") => {}
+        Some("client" | "-c" | "--client") => {
+            let uri = args.next().unwrap_or("ws://localhost:80".into());
+            let _ = utils::block_on(client(uri));
+        }
         _ => println!("{HELP}"),
     }
 }
@@ -66,7 +118,7 @@ fn main() {
 const HELP: &str = r#"
 USAGE:
     echo server [HOST][:PORT]
-    echo client <URI>
+    echo client [URI]
 
 Example:
     echo server 127.0.0.1

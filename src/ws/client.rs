@@ -11,7 +11,7 @@ fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static s
     } else {
         return Err(err_msg);
     };
-    let (addr, path) = uri.split_once("/").unwrap_or((uri, ""));
+    let (addr, path) = uri.split_once('/').unwrap_or((uri, ""));
     Ok((secure, addr, path))
 }
 
@@ -25,10 +25,14 @@ impl WebSocket<CLIENT> {
         headers: impl IntoIterator<Item = impl FmtHeaderField>,
     ) -> Result<Self> {
         let (secure, addr, path) = parse_ws_uri(uri.as_ref()).map_err(invalid_input)?;
-        let port = addr.contains(":").then_some("").unwrap_or(match secure {
-            true => ":443",
-            false => ":80",
-        });
+        let port = if addr.contains(':') {
+            ""
+        } else {
+            match secure {
+                true => ":443",
+                false => ":80",
+            }
+        };
 
         let mut stream = BufReader::new(TcpStream::connect(format!("{addr}{port}")).await?);
 
@@ -45,7 +49,7 @@ impl WebSocket<CLIENT> {
 
         if header
             .get_sec_ws_accept()
-            .ok_or(invalid_data("Couldn't get `Accept-Key` from response"))?
+            .ok_or_else(|| invalid_data("Couldn't get `Accept-Key` from response"))?
             != handshake::accept_key_from(sec_key).as_bytes()
         {
             return proto_err("Invalid accept key");
@@ -62,7 +66,7 @@ impl WebSocket<CLIENT> {
         })
     }
 
-    pub async fn recv<'a>(&'a mut self) -> Result<Data> {
+    pub async fn recv(&mut self) -> Result<Data> {
         let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
         Ok(client::Data { ty, ws: self })
     }

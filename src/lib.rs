@@ -20,7 +20,7 @@ use tokio::{
     net::TcpStream,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DataType {
     Text,
     Binary,

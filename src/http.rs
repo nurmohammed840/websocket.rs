@@ -101,9 +101,8 @@ impl<'a> std::fmt::Debug for Record<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut header = vec![];
         for (key, value) in &self.header {
-            match (str::from_utf8(key), str::from_utf8(value)) {
-                (Ok(key), Ok(value)) => header.push((key, value)),
-                _ => {}
+            if let (Ok(key), Ok(value)) = (str::from_utf8(key), str::from_utf8(value)) {
+                header.push((key, value))
             }
         }
         f.debug_struct("HttpRecord")

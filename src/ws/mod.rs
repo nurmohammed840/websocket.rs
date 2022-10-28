@@ -1,3 +1,5 @@
+#![allow(clippy::unusual_byte_groupings)]
+
 use crate::frame::*;
 use crate::*;
 
@@ -6,8 +8,6 @@ pub mod server;
 
 pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
-
-
 
 pub struct WebSocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,
@@ -52,10 +52,8 @@ impl<const SIDE: bool> WebSocket<SIDE> {
                 if !is_masked {
                     return proto_err("Expected masked frame");
                 }
-            } else {
-                if is_masked {
-                    return proto_err("Expected unmasked frame");
-                }
+            } else if is_masked {
+                return proto_err("Expected unmasked frame");
             }
 
             if opcode >= 8 {
@@ -85,7 +83,6 @@ impl<const SIDE: bool> WebSocket<SIDE> {
                         let code = u16::from_be_bytes([msg[0], msg[1]]);
                         let reason = &msg[2..];
                         self.send(Close { code, reason }).await?;
-                        self.stream.get_mut().shutdown().await?;
                         return err(ErrorKind::NotConnected, "The connection was closed");
                     }
                     // Ping
@@ -258,6 +255,7 @@ macro_rules! default_impl_for_data {
 
         impl Data<'_> {
             #[inline]
+            #[allow(clippy::len_without_is_empty)]
             pub fn len(&self) -> usize {
                 self.ws.len
             }

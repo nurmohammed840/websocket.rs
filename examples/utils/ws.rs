@@ -24,7 +24,6 @@ pub async fn upgrade(stream: TcpStream) -> Result<WebSocket<SERVER>> {
     let mut data = stream.fill_buf().await?;
     let mut amt = data.len();
 
-
     let req = str::from_utf8(data).map_err(invalid_data)?;
     println!("[Server] Incoming request from {addr}\n\n{req}");
     let res = handshake_response(&mut data).map_err(invalid_data)?;

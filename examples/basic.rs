@@ -19,7 +19,7 @@ async fn server() -> Result<()> {
     println!("[Server] Listening at {}", listener.local_addr()?);
 
     let (stream, _addr) = listener.accept().await?;
-    
+
     let mut ws = ws::upgrade(stream).await?;
     ws.send("Hello, World!").await?;
     loop {
