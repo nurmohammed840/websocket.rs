@@ -5,6 +5,12 @@
 name = "web-socket"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/nurmohammed840/websocket.rs"
+authors = ["Nur <nurmohammed840@gmail.com>"]
+keywords = ["ws", "websocket"]
+description = "WebSocket implementation for both client and server"
+
 
 [dependencies]
 tokio = { version = "1.21", features = ["io-util", "net"] }
