@@ -2,6 +2,18 @@
 
 This library provide WebSocket implementation for both client and server.
 
+### Usage
+
+```yaml
+cargo add web-socket
+```
+
+Or add this to your `Cargo.toml` file
+
+```toml
+[dependencies]
+web-socket = "0.1"
+```
 
 ### Client example
 
@@ -64,3 +76,8 @@ You can run this example by: `cargo run --example ping_pong`
 - [ ] Add sync API
 - [ ] Complete API docs
 - [ ] Support wss connection over TLS
+
+
+#### License
+
+This project is licensed under [Apache License 2.0](https://github.com/nurmohammed840/websocket.rs/blob/master/LICENSE)
