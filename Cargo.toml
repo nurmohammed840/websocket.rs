@@ -13,4 +13,4 @@ base64 = "0.13"
 fastrand = "1.8"
 
 [dev-dependencies]
-tokio = { features = ["macros", "rt"] }
+tokio = { version = "1.21", features = ["rt"] }

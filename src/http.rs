@@ -4,27 +4,27 @@ use std::str;
 /// # Example
 ///
 /// ```rust
-/// use web_socket::http::HeaderField;
+/// use web_socket::http::FmtHeaderField;
 ///
-/// assert_eq!(HeaderField::fmt(&("val", 2)), "val: 2\r\n");
-/// assert_eq!(HeaderField::fmt(&["key", "value"]), "key: value\r\n");
+/// assert_eq!(FmtHeaderField::fmt(&("val", 2)), "val: 2\r\n");
+/// assert_eq!(FmtHeaderField::fmt(&["key", "value"]), "key: value\r\n");
 /// ```
-pub trait HeaderField {
+pub trait FmtHeaderField {
     /// Format a single http header field
     fn fmt(_: &Self) -> String;
 }
 
-impl<T: HeaderField> HeaderField for &T {
+impl<T: FmtHeaderField> FmtHeaderField for &T {
     fn fmt(this: &Self) -> String {
         T::fmt(this)
     }
 }
-impl<T: std::fmt::Display> HeaderField for [T; 2] {
+impl<T: std::fmt::Display> FmtHeaderField for [T; 2] {
     fn fmt([key, value]: &Self) -> String {
         format!("{key}: {value}\r\n")
     }
 }
-impl<K: std::fmt::Display, V: std::fmt::Display> HeaderField for (K, V) {
+impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeaderField for (K, V) {
     fn fmt((key, value): &Self) -> String {
         format!("{key}: {value}\r\n")
     }
@@ -74,7 +74,7 @@ impl<'a> Record<'a> {
         (self.is_ws_upgrade()? && suppoted_version).then_some(self.get("sec-websocket-key")?)
     }
 
-    pub fn get_sec_ws_accept_key(&self) -> Option<&[u8]> {
+    pub fn get_sec_ws_accept(&self) -> Option<&[u8]> {
         self.is_ws_upgrade()?
             .then_some(self.get("sec-websocket-accept")?)
     }

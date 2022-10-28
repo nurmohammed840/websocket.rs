@@ -1,6 +1,6 @@
 use super::*;
 
-impl Websocket<SERVER> {
+impl WebSocket<SERVER> {
     pub fn new(stream: BufReader<TcpStream>) -> Self {
         Self {
             stream,
@@ -24,7 +24,7 @@ pub struct Data<'a> {
     pub ty: DataType,
     pub(crate) mask: Mask,
 
-    pub(crate) ws: &'a mut Websocket<SERVER>,
+    pub(crate) ws: &'a mut WebSocket<SERVER>,
 }
 
 default_impl_for_data!();

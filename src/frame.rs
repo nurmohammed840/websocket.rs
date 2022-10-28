@@ -58,7 +58,7 @@ impl TryFrom<u16> for CloseCode {
             1010 => CloseCode::MandatoryExt,
             1011 => CloseCode::InternalError,
             1015 => CloseCode::TLSHandshake,
-            _ => return Err("Unknown close code")
+            _ => return Err("Unknown close code"),
         })
     }
 }
@@ -94,8 +94,10 @@ impl Frame for [u8] {
 
 impl Frame for Close<'_> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&self.code.to_be_bytes());
-        encode::<SIDE, RandMask>(writer, true, 8, self.reason);
+        let mut data = Vec::with_capacity(2 + self.reason.len());
+        data.extend_from_slice(&self.code.to_be_bytes());
+        data.extend_from_slice(self.reason);
+        encode::<SIDE, RandMask>(writer, true, 8, &data);
     }
 }
 
@@ -107,8 +109,6 @@ impl Frame for Event<'_> {
         }
     }
 }
-
-
 
 #[inline]
 fn encode<const SIDE: bool, Mask: RandKeys>(

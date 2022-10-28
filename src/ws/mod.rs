@@ -13,28 +13,31 @@ pub enum Event<'a> {
     Pong(&'a [u8]),
 }
 
-pub struct Websocket<const SIDE: bool> {
+pub struct WebSocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,
-    pub on_event: Box<dyn FnMut(Event) -> Result<()>>,
+    pub on_event: Box<dyn FnMut(Event) -> Result<()> + Send + Sync>,
 
     fin: bool,
     len: usize,
 }
 
-impl<const SIDE: bool> Websocket<SIDE> {
+impl<const SIDE: bool> WebSocket<SIDE> {
     pub async fn send(&mut self, msg: impl Frame) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
         self.stream.get_mut().write_all(&bytes).await
     }
 
-    pub async fn close(mut self, code: CloseCode, reason: &[u8]) -> Result<()> {
-        let code = code as u16;
-        self.send(Close { code, reason }).await
+    pub async fn close(mut self, code: CloseCode, reason: impl AsRef<[u8]>) -> Result<()> {
+        self.send(Close {
+            code: code as u16,
+            reason: reason.as_ref(),
+        })
+        .await
     }
 }
 
-impl<const SIDE: bool> Websocket<SIDE> {
+impl<const SIDE: bool> WebSocket<SIDE> {
     async fn header(&mut self) -> Result<(bool, u8, usize)> {
         loop {
             let [b1, b2] = read_buf(&mut self.stream).await?;
@@ -276,6 +279,6 @@ macro_rules! default_impl_for_data {
     };
 }
 
-pub(super) use cls_if_err;
-pub(super) use default_impl_for_data;
-pub(super) use read_exect;
+pub(self) use cls_if_err;
+pub(self) use default_impl_for_data;
+pub(self) use read_exect;
