@@ -4,11 +4,13 @@ This library provide WebSocket implementation for both client and server.
 
 ### Usage
 
-```yaml
+Run:
+
+```
 cargo add web-socket
 ```
 
-Or add this to your `Cargo.toml` file
+Or add this to your `Cargo.toml` file.
 
 ```toml
 [dependencies]
@@ -38,6 +40,8 @@ loop {
 
 ### Ping-Pong Example
 
+You can run this example with: `cargo run --example ping_pong`
+
 ```rust
 use web_socket::{WebSocket, Event};
 
@@ -62,7 +66,7 @@ for _ in 0..5 {
 }
 ```
 
-You can run this example by: `cargo run --example ping_pong`
+For more examples, see [./examples](https://github.com/nurmohammed840/websocket.rs/tree/master/examples) directory.
 
 ### Feature
 
