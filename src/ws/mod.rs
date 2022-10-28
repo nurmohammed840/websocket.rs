@@ -7,11 +7,7 @@ pub mod server;
 pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
 
-#[derive(Debug, Clone)]
-pub enum Event<'a> {
-    Ping(&'a [u8]),
-    Pong(&'a [u8]),
-}
+
 
 pub struct WebSocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,

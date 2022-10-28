@@ -5,9 +5,11 @@ pub trait Frame {
 }
 
 /// When closing an established connection an endpoint MAY indicate a reason for closure.
-#[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
 pub enum CloseCode {
+    #[doc(hidden)]
+    Uncategorized = 0,
+
     /// The purpose for which the connection was established has been fulfilled
     Normal = 1000,
     /// Server going down or a browser having navigated away from a page
@@ -42,10 +44,9 @@ pub enum CloseCode {
     TLSHandshake = 1015,
 }
 
-impl TryFrom<u16> for CloseCode {
-    type Error = &'static str;
-    fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
-        Ok(match value {
+impl From<u16> for CloseCode {
+    fn from(value: u16) -> Self {
+        match value {
             1000 => CloseCode::Normal,
             1001 => CloseCode::Away,
             1002 => CloseCode::ProtocolError,
@@ -58,8 +59,8 @@ impl TryFrom<u16> for CloseCode {
             1010 => CloseCode::MandatoryExt,
             1011 => CloseCode::InternalError,
             1015 => CloseCode::TLSHandshake,
-            _ => return Err("Unknown close code"),
-        })
+            _ => CloseCode::Uncategorized,
+        }
     }
 }
 
