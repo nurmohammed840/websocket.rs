@@ -39,7 +39,7 @@ impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeaderField for (K, V) {
 /// assert_eq!(header.schema, "HTTP/1.1 101 Switching Protocols".as_bytes());
 /// assert_eq!(header.get("upgrade"), Some("websocket".as_bytes()));
 /// assert_eq!(
-///     header.get_sec_ws_accept_key(),
+///     header.get_sec_ws_accept(),
 ///     Some("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=".as_bytes())
 /// );
 /// ```
