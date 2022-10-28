@@ -76,14 +76,6 @@ async fn handeler(stream: TcpStream) -> Result<()> {
     }
 }
 
-fn on_event(ev: Event, pre: &str) -> Result<()> {
-    match ev {
-        Event::Ping(_) => println!("{pre} Ping: {ev}"),
-        Event::Pong(_) => println!("{pre} Pong: {ev}"),
-    }
-    Ok(())
-}
-
 async fn server(addr: String) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     println!("[Server] Listening at {}", listener.local_addr()?);
@@ -97,6 +89,14 @@ async fn server(addr: String) -> Result<()> {
             }
         });
     }
+}
+
+fn on_event(ev: Event, pre: &str) -> Result<()> {
+    match ev {
+        Event::Ping(_) => println!("{pre} Ping: {ev}"),
+        Event::Pong(_) => println!("{pre} Pong: {ev}"),
+    }
+    Ok(())
 }
 
 fn main() {
