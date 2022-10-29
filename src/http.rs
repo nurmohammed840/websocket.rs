@@ -1,5 +1,6 @@
 //! This module contain some utility function to work with http protocol.
-use std::str;
+
+use std::collections::HashMap;
 
 /// # Example
 ///
@@ -46,17 +47,14 @@ impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
 #[derive(Default, Clone)]
 pub struct Record<'a> {
     pub schema: &'a [u8],
-    pub header: Vec<(&'a [u8], &'a [u8])>,
+    pub header: HashMap<String, &'a [u8]>,
 }
 
 const HTTP_EOF_ERR: &str = "HTTP parse error: Unexpected end";
 
 impl<'a> Record<'a> {
-    pub fn get(&self, key: impl AsRef<[u8]>) -> Option<&[u8]> {
-        let key = key.as_ref();
-        self.header
-            .iter()
-            .find_map(|(k, v)| k.eq_ignore_ascii_case(key).then_some(*v))
+    pub fn get(&self, key: impl AsRef<str>) -> Option<&[u8]> {
+        self.header.get(key.as_ref()).copied()
     }
 
     fn is_ws_upgrade(&self) -> Option<bool> {
@@ -81,16 +79,20 @@ impl<'a> Record<'a> {
 
     pub fn from_raw(bytes: &mut &'a [u8]) -> std::result::Result<Self, &'static str> {
         let schema = trim_ascii_end(split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)?);
-        let mut header = vec![];
+        let mut header = HashMap::new();
         loop {
             match split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)? {
                 b"" | b"\r" => return Ok(Self { schema, header }),
                 line => {
                     let mut value = line;
                     let key = split_once(&mut value, b':')
-                        .ok_or("HTTP parse error: Invalid header field")?;
+                        .ok_or("HTTP parse error: Invalid header field")?
+                        .to_ascii_lowercase();
 
-                    header.push((key, trim_ascii_start(trim_ascii_end(value))));
+                    header.insert(
+                        String::from_utf8(key).map_err(|_| "Invalid UTF-8 bytes")?,
+                        trim_ascii_start(trim_ascii_end(value)),
+                    );
                 }
             }
         }
@@ -101,12 +103,12 @@ impl<'a> std::fmt::Debug for Record<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut header = vec![];
         for (key, value) in &self.header {
-            if let (Ok(key), Ok(value)) = (str::from_utf8(key), str::from_utf8(value)) {
+            if let Ok(value) = std::str::from_utf8(value) {
                 header.push((key, value))
             }
         }
         f.debug_struct("HttpRecord")
-            .field("schema", &str::from_utf8(self.schema))
+            .field("schema", &std::str::from_utf8(self.schema))
             .field("header", &header)
             .finish()
     }
