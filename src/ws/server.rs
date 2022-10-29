@@ -1,8 +1,8 @@
 use super::*;
 
-impl WebSocket<SERVER> {
+impl<R> WebSocket<SERVER, R> {
     #[inline]
-    pub fn new(stream: BufReader<TcpStream>) -> Self {
+    pub fn new(stream: R) -> Self {
         Self {
             stream,
             len: 0,
@@ -10,9 +10,11 @@ impl WebSocket<SERVER> {
             on_event: Box::new(|_| Ok(())),
         }
     }
+}
 
+impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SERVER, RW> {
     #[inline]
-    pub async fn recv(&mut self) -> Result<Data> {
+    pub async fn recv(&mut self) -> Result<Data<RW>> {
         let (ty, mask) = cls_if_err!(self, {
             let ty = self.read_data_frame_header().await?;
             let mask = Mask::from(read_buf(&mut self.stream).await?);
@@ -22,14 +24,14 @@ impl WebSocket<SERVER> {
     }
 }
 
-pub struct Data<'a> {
+pub struct Data<'a, Stream> {
     pub ty: DataType,
     pub(crate) mask: Mask,
 
-    pub(crate) ws: &'a mut WebSocket<SERVER>,
+    pub(crate) ws: &'a mut WebSocket<SERVER, Stream>,
 }
 
-impl Data<'_> {
+impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
     async fn _read_next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await?;
         self.mask = Mask::from(read_buf(&mut self.ws.stream).await?);

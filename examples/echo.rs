@@ -21,7 +21,7 @@ COMMAND:
 "#;
 
 async fn client(uri: String) -> Result<()> {
-    let mut ws = WebSocket::connect(uri).await?;
+    let mut ws = WebSocket::connect(uri, "/").await?;
     println!("[Client] Connected to {}", ws.stream.get_ref().peer_addr()?);
 
     ws.on_event = Box::new(|ev| on_event(ev, "[ECHO]"));

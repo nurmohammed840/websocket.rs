@@ -12,18 +12,18 @@ pub const SERVER: bool = true;
 pub const CLIENT: bool = false;
 
 /// WebSocket implementation for both client and server
-pub struct WebSocket<const SIDE: bool> {
-    pub stream: BufReader<TcpStream>,
+pub struct WebSocket<const SIDE: bool, Stream> {
+    pub stream: Stream,
 
     /// Listen for incoming websocket [Event].
-    /// 
+    ///
     /// ### Example
-    /// 
+    ///
     /// ```no_run
     /// use web_socket::{WebSocket, Event};
     /// # async {
-    /// 
-    /// let mut ws = WebSocket::connect("ws://localhost:80").await?;
+    ///
+    /// let mut ws = WebSocket::connect("localhost:80", "/").await?;
     /// // Fire when received ping/pong frame.
     /// ws.on_event = Box::new(|ev| {
     ///     println!("{ev:?}");
@@ -38,14 +38,14 @@ pub struct WebSocket<const SIDE: bool> {
     len: usize,
 }
 
-impl<const SIDE: bool> WebSocket<SIDE> {
+impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// ### Example
     ///
     /// ```no_run
     /// use web_socket::{WebSocket, CloseCode, Event};
     /// # async {
     ///
-    /// let mut ws = WebSocket::connect("ws://localhost:80").await?;
+    /// let mut ws = WebSocket::connect("localhost:80", "/").await?;
     /// ws.send("Text Message").await?;
     /// ws.send(b"Binary Data").await?;
     ///
@@ -58,7 +58,7 @@ impl<const SIDE: bool> WebSocket<SIDE> {
     pub async fn send(&mut self, msg: impl Frame) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
-        self.stream.get_mut().write_all(&bytes).await
+        self.stream.write_all(&bytes).await
     }
 
     /// ### Example
@@ -67,7 +67,7 @@ impl<const SIDE: bool> WebSocket<SIDE> {
     /// use web_socket::{WebSocket, CloseCode};
     /// # async {
     ///
-    /// let ws = WebSocket::connect("ws://localhost:80").await?;
+    /// let ws = WebSocket::connect("localhost:80", "/").await?;
     /// ws.close(CloseCode::Normal, "Closed successfully").await?;
     ///
     /// # std::io::Result::<_>::Ok(()) };
@@ -82,11 +82,12 @@ impl<const SIDE: bool> WebSocket<SIDE> {
 
         let mut writer = vec![];
         frame::encode::<SIDE, RandMask>(&mut writer, true, 8, &data);
-        self.stream.get_mut().write_all(&writer).await
+        self.stream.write_all(&writer).await?;
+        self.stream.flush().await
     }
 }
 
-impl<const SIDE: bool> WebSocket<SIDE> {
+impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW> {
     async fn header(&mut self) -> Result<(bool, u8, usize)> {
         loop {
             let [b1, b2] = read_buf(&mut self.stream).await?;
@@ -135,7 +136,7 @@ impl<const SIDE: bool> WebSocket<SIDE> {
                     8 => {
                         let mut writer = vec![];
                         frame::encode::<SIDE, mask::RandMask>(&mut writer, true, 8, &msg);
-                        self.stream.get_mut().write_all(&writer).await?;
+                        self.stream.write_all(&writer).await?;
 
                         return err(ErrorKind::NotConnected, "The connection was closed");
                     }
@@ -215,7 +216,7 @@ macro_rules! cls_if_err {
         match $code {
             Ok(val) => Ok(val),
             Err(err) => {
-                $ws.stream.get_mut().shutdown().await?;
+                $ws.stream.shutdown().await?;
                 Err(err)
             }
         }
@@ -239,7 +240,7 @@ macro_rules! read_exect {
 
 macro_rules! default_impl_for_data {
     () => {
-        impl Data<'_> {
+        impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
             #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 cls_if_err!(self.ws, {
@@ -307,7 +308,7 @@ macro_rules! default_impl_for_data {
             }
         }
 
-        impl Data<'_> {
+        impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
             #[inline]
             #[allow(clippy::len_without_is_empty)]
             pub fn len(&self) -> usize {

@@ -17,9 +17,14 @@ use utils::*;
 
 use std::io::Result;
 
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
+};
+
+// # feature = "client"
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    net::TcpStream,
+    io::BufReader,
+    net::{TcpStream, ToSocketAddrs},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

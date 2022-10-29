@@ -28,7 +28,7 @@ async fn server() -> Result<()> {
 }
 
 async fn client() -> Result<()> {
-    let mut ws = WebSocket::connect("ws://localhost:1234/chat").await?;
+    let mut ws = WebSocket::connect("localhost:1234", "/chat").await?;
     println!("[Client] Connected to {}", ws.stream.get_ref().peer_addr()?);
 
     println!("Server: {}", read_msg!(ws)?);

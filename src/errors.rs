@@ -14,7 +14,3 @@ pub fn proto_err<T>(msg: impl Into<DynErr>) -> std::io::Result<T> {
 pub fn invalid_data(msg: impl Into<DynErr>) -> Error {
     Error::new(ErrorKind::InvalidData, msg)
 }
-
-pub fn invalid_input(msg: impl Into<DynErr>) -> Error {
-    Error::new(ErrorKind::InvalidInput, msg)
-}

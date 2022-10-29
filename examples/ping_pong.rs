@@ -1,14 +1,14 @@
 mod utils;
 use std::io::Result;
-use web_socket::{Event, WebSocket, DataType};
+use web_socket::{DataType, Event, WebSocket};
 
 async fn ping_pong() -> Result<()> {
-    let mut ws = WebSocket::connect("ws://ws.ifelse.io").await?;
+    let mut ws = WebSocket::connect("ws.ifelse.io:80", "/").await?;
 
-    ws.on_event = Box::new(|ev| {    
+    ws.on_event = Box::new(|ev| {
         if let Event::Pong(_) = ev {
             println!("Pong: {}", ev.to_string());
-        } 
+        }
         Ok(())
     });
 

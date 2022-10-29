@@ -18,7 +18,7 @@ fn handshake_response(request: &mut &[u8]) -> result::Result<String, &'static st
     Ok(handshake::response(sec_ws_key, [("", ""); 0]))
 }
 
-pub async fn upgrade(stream: TcpStream) -> Result<WebSocket<SERVER>> {
+pub async fn upgrade(stream: TcpStream) -> Result<WebSocket<SERVER, BufReader<TcpStream>>> {
     let addr = stream.peer_addr()?;
     let mut stream = BufReader::new(stream);
     let mut data = stream.fill_buf().await?;

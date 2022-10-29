@@ -21,27 +21,31 @@ web-socket = "0.2"
 
 You can run this example with: `cargo run --example ping_pong`
 
-```rust, no_run
+```rust no_run
+use std::io::Result;
 use web_socket::{WebSocket, Event};
 
-let mut ws = WebSocket::connect("ws://ws.ifelse.io").await?;
+async fn example() -> Result<()> {
+    let mut ws = WebSocket::connect("ws.ifelse.io:80", "/").await?;
 
-ws.on_event = Box::new(|ev| {
-    if let Event::Pong(_) = ev {
-        println!("Pong: {}", ev.to_string());
+    ws.on_event = Box::new(|ev| {
+        if let Event::Pong(_) = ev {
+            println!("Pong: {}", ev.to_string());
+        }
+        Ok(())
+    });
+
+    for _ in 0..5 {
+        ws.send(Event::Ping(b"Hello!")).await?;
+        ws.send("Copy Cat!").await?;
+
+        let mut data = ws.recv().await?;
+
+        let mut buf = vec![];
+        data.read_to_end(&mut buf).await?;
+        println!("Text: {:?}", String::from_utf8(buf));
     }
     Ok(())
-});
-
-for _ in 0..5 {
-    ws.send(Event::Ping(b"Hello!")).await?;
-    ws.send("Copy Cat!").await?;
-
-    let mut data = ws.recv().await?;
-
-    let mut buf = vec![];
-    data.read_to_end(&mut buf).await?;
-    println!("Text: {:?}", String::from_utf8(buf));
 }
 ```
 

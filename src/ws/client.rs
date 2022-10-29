@@ -1,43 +1,24 @@
 use super::*;
 use http::FmtHeader;
 
-fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static str> {
-    let err_msg = "Invalid Websocket URI";
-    let (schema, uri) = uri.split_once("://").ok_or(err_msg)?;
-    let secure = if schema.eq_ignore_ascii_case("ws") {
-        false
-    } else if schema.eq_ignore_ascii_case("wss") {
-        true
-    } else {
-        return Err(err_msg);
-    };
-    let (addr, path) = uri.split_once('/').unwrap_or((uri, ""));
-    Ok((secure, addr, path))
-}
-
-impl WebSocket<CLIENT> {
+impl WebSocket<CLIENT, BufReader<TcpStream>> {
     #[inline]
-    pub async fn connect(uri: impl AsRef<str>) -> Result<Self> {
-        Self::connect_with_headers(uri, [("", ""); 0]).await
+    pub async fn connect(
+        addr: impl ToSocketAddrs + std::fmt::Display,
+        path: impl AsRef<str>,
+    ) -> Result<Self> {
+        Self::connect_with_headers(addr, path, [("", ""); 0]).await
     }
 
     pub async fn connect_with_headers(
-        uri: impl AsRef<str>,
+        addr: impl ToSocketAddrs + std::fmt::Display,
+        path: impl AsRef<str>,
         headers: impl IntoIterator<Item = impl FmtHeader>,
     ) -> Result<Self> {
-        let (secure, addr, path) = parse_ws_uri(uri.as_ref()).map_err(invalid_input)?;
-        let port = if addr.contains(':') {
-            ""
-        } else {
-            match secure {
-                true => ":443",
-                false => ":80",
-            }
-        };
+        let host = addr.to_string();
+        let mut stream = BufReader::new(TcpStream::connect(addr).await?);
 
-        let mut stream = BufReader::new(TcpStream::connect(format!("{addr}{port}")).await?);
-
-        let (request, sec_key) = handshake::request(addr, path, headers);
+        let (request, sec_key) = handshake::request(host, path, headers);
         stream.get_mut().write_all(request.as_bytes()).await?;
 
         let mut bytes = stream.fill_buf().await?;
@@ -66,20 +47,22 @@ impl WebSocket<CLIENT> {
             on_event: Box::new(|_| Ok(())),
         })
     }
+}
 
+impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, RW> {
     #[inline]
-    pub async fn recv(&mut self) -> Result<Data> {
+    pub async fn recv(&mut self) -> Result<Data<RW>> {
         let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
         Ok(client::Data { ty, ws: self })
     }
 }
 
-pub struct Data<'a> {
+pub struct Data<'a, Stream> {
     pub ty: DataType,
-    pub(crate) ws: &'a mut WebSocket<CLIENT>,
+    pub(crate) ws: &'a mut WebSocket<CLIENT, Stream>,
 }
 
-impl Data<'_> {
+impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
     async fn _read_next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await
     }
