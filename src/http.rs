@@ -4,27 +4,27 @@ use std::str;
 /// # Example
 ///
 /// ```rust
-/// use web_socket::http::FmtHeaderField;
+/// use web_socket::http::FmtHeader;
 ///
-/// assert_eq!(FmtHeaderField::fmt(&("val", 2)), "val: 2\r\n");
-/// assert_eq!(FmtHeaderField::fmt(&["key", "value"]), "key: value\r\n");
+/// assert_eq!(FmtHeader::fmt(&("val", 2)), "val: 2\r\n");
+/// assert_eq!(FmtHeader::fmt(&["key", "value"]), "key: value\r\n");
 /// ```
-pub trait FmtHeaderField {
+pub trait FmtHeader {
     /// Format a single http header field
     fn fmt(_: &Self) -> String;
 }
 
-impl<T: FmtHeaderField> FmtHeaderField for &T {
+impl<T: FmtHeader> FmtHeader for &T {
     fn fmt(this: &Self) -> String {
         T::fmt(this)
     }
 }
-impl<T: std::fmt::Display> FmtHeaderField for [T; 2] {
+impl<T: std::fmt::Display> FmtHeader for [T; 2] {
     fn fmt([key, value]: &Self) -> String {
         format!("{key}: {value}\r\n")
     }
 }
-impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeaderField for (K, V) {
+impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
     fn fmt((key, value): &Self) -> String {
         format!("{key}: {value}\r\n")
     }

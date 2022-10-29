@@ -1,5 +1,5 @@
 use super::*;
-use http::FmtHeaderField;
+use http::FmtHeader;
 
 fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static str> {
     let err_msg = "Invalid Websocket URI";
@@ -16,13 +16,14 @@ fn parse_ws_uri(uri: &str) -> std::result::Result<(bool, &str, &str), &'static s
 }
 
 impl WebSocket<CLIENT> {
+    #[inline]
     pub async fn connect(uri: impl AsRef<str>) -> Result<Self> {
         Self::connect_with_headers(uri, [("", ""); 0]).await
     }
 
     pub async fn connect_with_headers(
         uri: impl AsRef<str>,
-        headers: impl IntoIterator<Item = impl FmtHeaderField>,
+        headers: impl IntoIterator<Item = impl FmtHeader>,
     ) -> Result<Self> {
         let (secure, addr, path) = parse_ws_uri(uri.as_ref()).map_err(invalid_input)?;
         let port = if addr.contains(':') {
@@ -66,6 +67,7 @@ impl WebSocket<CLIENT> {
         })
     }
 
+    #[inline]
     pub async fn recv(&mut self) -> Result<Data> {
         let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
         Ok(client::Data { ty, ws: self })

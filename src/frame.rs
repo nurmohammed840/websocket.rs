@@ -7,9 +7,6 @@ pub trait Frame {
 /// When closing an established connection an endpoint MAY indicate a reason for closure.
 #[derive(Debug, Clone, Copy)]
 pub enum CloseCode {
-    #[doc(hidden)]
-    Uncategorized = 0,
-
     /// The purpose for which the connection was established has been fulfilled
     Normal = 1000,
     /// Server going down or a browser having navigated away from a page
@@ -44,7 +41,15 @@ pub enum CloseCode {
     TLSHandshake = 1015,
 }
 
+impl From<CloseCode> for u16 {
+    #[inline]
+    fn from(code: CloseCode) -> Self {
+        code as u16
+    }
+}
+
 impl From<u16> for CloseCode {
+    #[inline]
     fn from(value: u16) -> Self {
         match value {
             1000 => CloseCode::Normal,
@@ -54,19 +59,13 @@ impl From<u16> for CloseCode {
             1005 => CloseCode::NoStatusRcvd,
             1006 => CloseCode::Abnormal,
             1007 => CloseCode::InvalidPayload,
-            1008 => CloseCode::PolicyViolation,
             1009 => CloseCode::MessageTooBig,
             1010 => CloseCode::MandatoryExt,
             1011 => CloseCode::InternalError,
             1015 => CloseCode::TLSHandshake,
-            _ => CloseCode::Uncategorized,
+            _ => CloseCode::PolicyViolation,
         }
     }
-}
-
-pub(crate) struct Close<'a> {
-    pub code: u16,
-    pub reason: &'a [u8],
 }
 
 impl<T: Frame + ?Sized> Frame for &T {
@@ -93,12 +92,9 @@ impl Frame for [u8] {
     }
 }
 
-impl Frame for Close<'_> {
+impl<const N: usize> Frame for [u8; N] {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        let mut data = Vec::with_capacity(2 + self.reason.len());
-        data.extend_from_slice(&self.code.to_be_bytes());
-        data.extend_from_slice(self.reason);
-        encode::<SIDE, RandMask>(writer, true, 8, &data);
+        encode::<SIDE, RandMask>(writer, true, 2, self);
     }
 }
 
@@ -111,8 +107,7 @@ impl Frame for Event<'_> {
     }
 }
 
-#[inline]
-fn encode<const SIDE: bool, Mask: RandKeys>(
+pub(crate) fn encode<const SIDE: bool, Mask: RandKeys>(
     writer: &mut Vec<u8>,
     fin: bool,
     opcode: u8,

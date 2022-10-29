@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod errors;
 mod frame;
 mod mask;

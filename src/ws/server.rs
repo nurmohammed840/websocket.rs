@@ -1,6 +1,7 @@
 use super::*;
 
 impl WebSocket<SERVER> {
+    #[inline]
     pub fn new(stream: BufReader<TcpStream>) -> Self {
         Self {
             stream,
@@ -10,6 +11,7 @@ impl WebSocket<SERVER> {
         }
     }
 
+    #[inline]
     pub async fn recv(&mut self) -> Result<Data> {
         let (ty, mask) = cls_if_err!(self, {
             let ty = self.read_data_frame_header().await?;
@@ -26,8 +28,6 @@ pub struct Data<'a> {
 
     pub(crate) ws: &'a mut WebSocket<SERVER>,
 }
-
-default_impl_for_data!();
 
 impl Data<'_> {
     async fn _read_next_frag(&mut self) -> Result<()> {
@@ -49,3 +49,5 @@ impl Data<'_> {
         Ok(amt)
     }
 }
+
+default_impl_for_data!();

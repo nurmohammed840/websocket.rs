@@ -1,16 +1,37 @@
 #![allow(clippy::unusual_byte_groupings)]
-
-use crate::frame::*;
 use crate::*;
 
+/// client specific implementation
 pub mod client;
+/// server specific implementation
 pub mod server;
 
+/// Used to represent `WebSocket<SERVER>` type.
 pub const SERVER: bool = true;
+/// Used to represent `WebSocket<CLIENT>` type.
 pub const CLIENT: bool = false;
 
+/// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool> {
     pub stream: BufReader<TcpStream>,
+
+    /// Listen for incoming websocket [Event].
+    /// 
+    /// ### Example
+    /// 
+    /// ```no_run
+    /// use web_socket::{WebSocket, Event};
+    /// # async {
+    /// 
+    /// let mut ws = WebSocket::connect("ws://localhost:80").await?;
+    /// // Fire when received ping/pong frame.
+    /// ws.on_event = Box::new(|ev| {
+    ///     println!("{ev:?}");
+    ///     Ok(())
+    /// });
+    ///
+    /// # std::io::Result::<_>::Ok(()) };
+    /// ```
     pub on_event: Box<dyn FnMut(Event) -> Result<()> + Send + Sync>,
 
     fin: bool,
@@ -18,18 +39,50 @@ pub struct WebSocket<const SIDE: bool> {
 }
 
 impl<const SIDE: bool> WebSocket<SIDE> {
+    /// ### Example
+    ///
+    /// ```no_run
+    /// use web_socket::{WebSocket, CloseCode, Event};
+    /// # async {
+    ///
+    /// let mut ws = WebSocket::connect("ws://localhost:80").await?;
+    /// ws.send("Text Message").await?;
+    /// ws.send(b"Binary Data").await?;
+    ///
+    /// // You can also send control frame.
+    /// ws.send(Event::Ping(b"Hello!")).await?;
+    /// ws.send(Event::Pong(b"Hello!")).await?;
+    ///
+    /// # std::io::Result::<_>::Ok(()) };
+    /// ```
     pub async fn send(&mut self, msg: impl Frame) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
         self.stream.get_mut().write_all(&bytes).await
     }
 
-    pub async fn close(mut self, code: CloseCode, reason: impl AsRef<[u8]>) -> Result<()> {
-        self.send(Close {
-            code: code as u16,
-            reason: reason.as_ref(),
-        })
-        .await
+    /// ### Example
+    ///
+    /// ```no_run
+    /// use web_socket::{WebSocket, CloseCode};
+    /// # async {
+    ///
+    /// let ws = WebSocket::connect("ws://localhost:80").await?;
+    /// ws.close(CloseCode::Normal, "Closed successfully").await?;
+    ///
+    /// # std::io::Result::<_>::Ok(()) };
+    /// ```
+    pub async fn close(mut self, code: impl Into<u16>, reason: impl AsRef<[u8]>) -> Result<()> {
+        let code: u16 = code.into();
+        let reason = reason.as_ref();
+
+        let mut data = Vec::with_capacity(2 + reason.len());
+        data.extend_from_slice(&code.to_be_bytes());
+        data.extend_from_slice(reason);
+
+        let mut writer = vec![];
+        frame::encode::<SIDE, RandMask>(&mut writer, true, 8, &data);
+        self.stream.get_mut().write_all(&writer).await
     }
 }
 
@@ -80,9 +133,10 @@ impl<const SIDE: bool> WebSocket<SIDE> {
                 match opcode {
                     // Close
                     8 => {
-                        let code = u16::from_be_bytes([msg[0], msg[1]]);
-                        let reason = &msg[2..];
-                        self.send(Close { code, reason }).await?;
+                        let mut writer = vec![];
+                        frame::encode::<SIDE, mask::RandMask>(&mut writer, true, 8, &msg);
+                        self.stream.get_mut().write_all(&writer).await?;
+
                         return err(ErrorKind::NotConnected, "The connection was closed");
                     }
                     // Ping

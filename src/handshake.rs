@@ -1,4 +1,4 @@
-use crate::http::FmtHeaderField;
+use crate::http::FmtHeader;
 use sha1::{Digest, Sha1};
 
 const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -32,12 +32,12 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
 /// ```
 pub fn response(
     sec_ws_key: impl AsRef<str>,
-    headers: impl IntoIterator<Item = impl FmtHeaderField>,
+    headers: impl IntoIterator<Item = impl FmtHeader>,
 ) -> String {
     let key = accept_key_from(sec_ws_key.as_ref());
     let headers: String = headers
         .into_iter()
-        .map(|f| FmtHeaderField::fmt(&f))
+        .map(|f| FmtHeader::fmt(&f))
         .collect();
     format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n{headers}\r\n")
 }
@@ -64,14 +64,14 @@ pub fn response(
 pub fn request(
     host: impl AsRef<str>,
     path: impl AsRef<str>,
-    headers: impl IntoIterator<Item = impl FmtHeaderField>,
+    headers: impl IntoIterator<Item = impl FmtHeader>,
 ) -> (String, String) {
     let host = host.as_ref();
     let path = path.as_ref().trim_start_matches('/');
     let sec_key = base64::encode(fastrand::u128(..).to_ne_bytes());
     let headers: String = headers
         .into_iter()
-        .map(|f| FmtHeaderField::fmt(&f))
+        .map(|f| FmtHeader::fmt(&f))
         .collect();
     (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"),sec_key)
 }
