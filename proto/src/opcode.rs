@@ -67,12 +67,30 @@ pub enum Opcode {
 
 impl Opcode {
     /// Whether the opcode indicates a control frame.
+    #[inline]
     pub fn is_control(self) -> bool {
         self as u8 >= 8
     }
 }
 
+impl TryFrom<u8> for Opcode {
+    type Error = &'static str;
+    #[inline]
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Opcode::Continue,
+            1 => Opcode::Text,
+            2 => Opcode::Binary,
+            8 => Opcode::Close,
+            9 => Opcode::Ping,
+            10 => Opcode::Pong,
+            _ => return Err("Unknown opcode"),
+        })
+    }
+}
+
 impl From<Opcode> for u8 {
+    #[inline]
     fn from(opcode: Opcode) -> Self {
         opcode as u8
     }

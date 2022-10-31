@@ -7,6 +7,8 @@ mod close_code;
 mod opcode;
 mod rsv;
 
+use core::fmt;
+
 pub use close_code::*;
 pub use opcode::*;
 pub use rsv::*;
@@ -33,7 +35,7 @@ pub use rsv::*;
 /// |                     Payload Data continued ...                |
 /// +---------------------------------------------------------------+
 /// ```
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone)]
 pub struct Header {
     /// Indicates that this is the final fragment in a message.  The first
     /// fragment MAY also be the final fragment.
@@ -64,6 +66,22 @@ pub struct Header {
     ///
     /// A server MUST NOT mask any frames that it sends to the client.
     pub is_masked: bool,
+}
+
+impl fmt::Debug for Header {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let opcode: Box<dyn fmt::Debug> = match Opcode::try_from(self.opcode) {
+            Ok(op) => Box::new(op),
+            Err(_) => Box::new(format!("Unknown({})", self.opcode)),
+        };
+        f.debug_struct("Header")
+            .field("fin", &self.fin)
+            .field("rsv", &self.rsv)
+            .field("opcode", &opcode)
+            .field("len", &self.len)
+            .field("is_masked", &self.is_masked)
+            .finish()
+    }
 }
 
 // #[cfg(test)]

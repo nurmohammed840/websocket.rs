@@ -16,6 +16,7 @@ description = "WebSocket implementation for both client and server"
 tokio = { version = "1.21", default-features = false, features = ["io-util", "net"] }
 tokio-rustls = { version = "0.23", default-features = false }
 webpki-roots = "0.22"
+
 fastrand = "1.8"
 base64 = "0.13"
 sha-1 = "0.10"

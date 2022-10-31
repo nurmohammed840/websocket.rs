@@ -33,7 +33,22 @@
 //! -  Request may include any other header fields, for example, cookies and/or authentication-related header fields.
 //! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
 
-// use sha1::{Digest, Sha1};
+use sha1::{Digest, Sha1};
+
+pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+/// ### Example
+///
+/// ```rust
+/// use web_socket_proto::handshake::accept_key_from;
+/// assert_eq!(accept_key_from("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+/// ```
+pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
+    let mut sha1 = Sha1::new();
+    sha1.update(sec_ws_key.as_ref());
+    sha1.update(MAGIC_STRING);
+    base64::encode(sha1.finalize())
+}
 
 /// # Example
 ///
@@ -63,7 +78,6 @@ impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
         format!("{key}: {value}\r\n")
     }
 }
-
 
 /// ## Server handshake response
 ///
@@ -101,20 +115,42 @@ impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
 /// ### Note
 ///
 /// - Regular HTTP status codes can be used only before the handshake. After the handshake succeeds, you have to use a different set of codes (defined in section 7.4 of the spec)
-pub fn response(_key: &str) -> String {
-    todo!()
-    // let mut m = Sha1::new();
-    // m.update(key.as_bytes());
-    // m.update(MAGIC_STRING);
-    // let key = base64::encode(m.finalize());
-    // format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n\r\n",)
+pub fn response(
+    sec_ws_key: impl AsRef<str>,
+    headers: impl IntoIterator<Item = impl FmtHeader>,
+) -> String {
+    let key = accept_key_from(sec_ws_key.as_ref());
+    let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
+    format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n{headers}\r\n")
 }
 
-// pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-// pub fn apply_mask<const S: usize>(keys: [u8; S], payload: &mut [u8]) {
-//     payload
-//         .iter_mut()
-//         .zip(keys.into_iter().cycle())
-//         .for_each(|(p, m)| *p ^= m);
-// }
+/// ### Example
+///
+/// ```no_run
+/// use web_socket_proto::handshake::request;
+/// let _ = request("example.com", "/path", [("key", "value")]);
+/// ```
+///
+/// ### Output
+///
+/// ```yaml
+/// GET /path HTTP/1.1
+/// Host: example.com
+/// Upgrade: websocket
+/// Connection: Upgrade
+/// Sec-WebSocket-Version: 13
+/// Sec-WebSocket-Key: D3E1sFZlZfeZgNXtVHfhKg== # randomly generated
+/// key: value
+/// ...
+/// ```
+pub fn request(
+    host: impl AsRef<str>,
+    path: impl AsRef<str>,
+    headers: impl IntoIterator<Item = impl FmtHeader>,
+) -> (String, String) {
+    let host = host.as_ref();
+    let path = path.as_ref().trim_start_matches('/');
+    let sec_key = base64::encode(fastrand::u128(..).to_ne_bytes());
+    let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
+    (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"),sec_key)
+}
