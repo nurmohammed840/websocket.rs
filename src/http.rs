@@ -31,6 +31,8 @@ impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
     }
 }
 
+/// Basic http header perser
+/// 
 /// ### Example
 ///
 /// ```rust

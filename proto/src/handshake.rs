@@ -33,7 +33,37 @@
 //! -  Request may include any other header fields, for example, cookies and/or authentication-related header fields.
 //! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
 
-use sha1::{Digest, Sha1};
+// use sha1::{Digest, Sha1};
+
+/// # Example
+///
+/// ```rust
+/// use web_socket_proto::handshake::FmtHeader;
+///
+/// assert_eq!(FmtHeader::fmt(&("val", 2)), "val: 2\r\n");
+/// assert_eq!(FmtHeader::fmt(&["key", "value"]), "key: value\r\n");
+/// ```
+pub trait FmtHeader {
+    /// Format a single http header field
+    fn fmt(_: &Self) -> String;
+}
+
+impl<T: FmtHeader> FmtHeader for &T {
+    fn fmt(this: &Self) -> String {
+        T::fmt(this)
+    }
+}
+impl<T: std::fmt::Display> FmtHeader for [T; 2] {
+    fn fmt([key, value]: &Self) -> String {
+        format!("{key}: {value}\r\n")
+    }
+}
+impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
+    fn fmt((key, value): &Self) -> String {
+        format!("{key}: {value}\r\n")
+    }
+}
+
 
 /// ## Server handshake response
 ///
@@ -71,19 +101,20 @@ use sha1::{Digest, Sha1};
 /// ### Note
 ///
 /// - Regular HTTP status codes can be used only before the handshake. After the handshake succeeds, you have to use a different set of codes (defined in section 7.4 of the spec)
-pub fn response(key: &str) -> String {
-    let mut m = Sha1::new();
-    m.update(key.as_bytes());
-    m.update(MAGIC_STRING);
-    let key = base64::encode(m.finalize());
-    format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n\r\n",)
+pub fn response(_key: &str) -> String {
+    todo!()
+    // let mut m = Sha1::new();
+    // m.update(key.as_bytes());
+    // m.update(MAGIC_STRING);
+    // let key = base64::encode(m.finalize());
+    // format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n\r\n",)
 }
 
-pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+// pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-pub fn apply_mask<const S: usize>(keys: [u8; S], payload: &mut [u8]) {
-    payload
-        .iter_mut()
-        .zip(keys.into_iter().cycle())
-        .for_each(|(p, m)| *p ^= m);
-}
+// pub fn apply_mask<const S: usize>(keys: [u8; S], payload: &mut [u8]) {
+//     payload
+//         .iter_mut()
+//         .zip(keys.into_iter().cycle())
+//         .for_each(|(p, m)| *p ^= m);
+// }

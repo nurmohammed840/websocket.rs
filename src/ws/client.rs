@@ -40,12 +40,7 @@ impl WebSocket<CLIENT, BufReader<TcpStream>> {
         let remaining = bytes.len();
         stream.consume(total_len - remaining);
 
-        Ok(Self {
-            stream,
-            len: 0,
-            fin: true,
-            on_event: Box::new(|_| Ok(())),
-        })
+        Ok(Self::from(stream))
     }
 }
 
@@ -83,3 +78,36 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
 }
 
 default_impl_for_data!();
+
+// ----------------------------------------------------------------------
+
+// use std::sync::Arc;
+// use tokio_rustls::{
+//     rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore},
+//     TlsConnector,
+// };
+
+// async fn _k() -> Result<()> {
+//     let mut root_store = RootCertStore::empty();
+//     root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+//         OwnedTrustAnchor::from_subject_spki_name_constraints(
+//             ta.subject,
+//             ta.spki,
+//             ta.name_constraints,
+//         )
+//     }));
+
+//     let config = ClientConfig::builder()
+//         .with_safe_defaults()
+//         .with_root_certificates(root_store)
+//         .with_no_client_auth();
+
+//     let connector = TlsConnector::from(Arc::new(config));
+
+//     let mut stream = connector.connect(
+//         "example.com".try_into().expect("invalid DNS name"),
+//         TcpStream::connect("example.com:443").await?,
+//     );
+//     let a = stream.await?;
+//     Ok(())
+// }

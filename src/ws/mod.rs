@@ -87,6 +87,18 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     }
 }
 
+impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
+    #[inline]
+    fn from(stream: Stream) -> Self {
+        Self {
+            stream,
+            on_event: Box::new(|_| Ok(())),
+            fin: true,
+            len: 0,
+        }
+    }
+}
+
 impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW> {
     async fn header(&mut self) -> Result<(bool, u8, usize)> {
         loop {
@@ -225,14 +237,16 @@ macro_rules! cls_if_err {
 macro_rules! read_exect {
     [$this:expr, $buf:expr, $code:expr] => {
         loop {
-            // Let assume `self._read(..)` is expensive, So if the `buf` is empty do nothing.
-            if $buf.is_empty() { break }
             match $this._read($buf).await? {
                 0 => match $buf.is_empty() {
                     true => break,
                     false => $code,
                 },
-                amt => $buf = &mut $buf[amt..],
+                amt => {
+                    $buf = &mut $buf[amt..];
+                    // Let assume `self._read(..)` is expensive, So if the `buf` is empty do nothing.
+                    if $buf.is_empty() { break }
+                },
             }
         }
     };

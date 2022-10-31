@@ -1,14 +1,9 @@
 use super::*;
 
-impl<R> WebSocket<SERVER, R> {
+impl<Stream> WebSocket<SERVER, Stream> {
     #[inline]
-    pub fn new(stream: R) -> Self {
-        Self {
-            stream,
-            len: 0,
-            fin: true,
-            on_event: Box::new(|_| Ok(())),
-        }
+    pub fn new(stream: Stream) -> Self {
+        Self::from(stream)
     }
 }
 

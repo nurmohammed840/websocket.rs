@@ -57,8 +57,8 @@ For more examples, see [./examples](https://github.com/nurmohammed840/websocket.
 - [x]  Support [backpressure](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API/Concepts#backpressure)
 - [x]  Support fragmented messages.
 - [x]  Allow sending control frame.
-- [ ]  Support sync API
-- [ ]  Client support wss connection over TLS v1.3
+- [ ]  Client support wss connection over TLS
+- [ ]  (TODO) Support sync API
 
 #### License
 
