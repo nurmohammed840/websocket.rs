@@ -18,3 +18,9 @@ impl Rsv {
         self.0 & 0b1_0000 != 0
     }
 }
+
+impl std::fmt::Debug for Rsv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#b}", (self.0 >> 4) & 0b111)
+    }
+}
