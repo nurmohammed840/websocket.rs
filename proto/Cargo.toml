@@ -1,9 +1,0 @@
-[package]
-name = "web-socket-proto"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-sha-1 = "0.10"
-base64 = "0.13"
-fastrand = "1.8"

@@ -1,7 +1,42 @@
+//! # Client handshake request
+//!
+//! A client sends a handshake request to the server. It includes the following information:
+//!
+//! ```yml
+//! GET /chat HTTP/1.1
+//! Host: example.com:8000
+//! Upgrade: websocket
+//! Connection: Upgrade
+//! Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+//! Sec-WebSocket-Version: 13
+//! ```
+//!
+//! The server must be careful to understand everything the client asks for, otherwise security issues can occur.
+//! If any header is not understood or has an incorrect value, the server should send a 400 ("Bad Request")} response and immediately close the socket.
+//!
+//! ### Tips
+//!
+//! All browsers send an Origin header.
+//! You can use this header for security (checking for same origin, automatically allowing or denying, etc.) and send a 403 Forbidden if you don't like what you see.
+//! However, be warned that non-browser agents can send a faked Origin. Most applications reject requests without this header.
+//!
+//! Any http headers is allowed. (Do whatever you want with them)
+//!
+//! ### Note
+//!
+//! -  HTTP version must be `1.1` or greater, and method must be `GET`
+//! - `Host` header field containing the server's authority.
+//! - `Upgrade` header field containing the value `"websocket"`
+//! - `Connection` header field that includes the token `"Upgrade"`
+//! - `Sec-WebSocket-Version` header field containing the value `13`
+//! - `Sec-WebSocket-Key` header field with a base64-encoded value that, when decoded, is 16 bytes in length.
+//! -  Request may include any other header fields, for example, cookies and/or authentication-related header fields.
+//! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
+
 use crate::http::FmtHeader;
 use sha1::{Digest, Sha1};
 
-const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 /// ### Example
 ///
@@ -16,6 +51,13 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
     base64::encode(sha1.finalize())
 }
 
+/// ## Server handshake response
+///
+/// When the server receives the handshake request,
+/// It should send back a special response that indicates that the protocol will be changing from HTTP to WebSocket.
+///
+/// The `Sec-WebSocket-Accept` header is important in that the server must derive it from the `Sec-WebSocket-Key` that the client sent to it.
+///
 /// ### Example
 ///
 /// ```rust
@@ -30,15 +72,28 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
 /// let field: Option<(&str, &str)> = None;
 /// assert_eq!(web_socket::handshake::response("dGhlIHNhbXBsZSBub25jZQ==", field), res.join("\r\n"));
 /// ```
+///
+/// To get it, concatenate the client's `Sec-WebSocket-Key` and the string _"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"_ together (it's a [Magic string](https://en.wikipedia.org/wiki/Magic_string)), take the SHA-1 hash of the result, and return the base64 encoding of that hash.
+///
+///
+/// 1. If the connection is happening on an HTTPS (HTTP-over-TLS) port,
+///    perform a TLS handshake over the connection.  If this fails
+///    (e.g., the client indicated a host name in the extended client
+///    hello "server_name" extension that the server does not host),
+///    then close the connection.
+///
+/// 2. The server can perform additional client authentication, Or The server MAY redirect the client.
+///
+///
+/// ### Note
+///
+/// - Regular HTTP status codes can be used only before the handshake. After the handshake succeeds, you have to use a different set of codes (defined in section 7.4 of the spec)
 pub fn response(
     sec_ws_key: impl AsRef<str>,
     headers: impl IntoIterator<Item = impl FmtHeader>,
 ) -> String {
     let key = accept_key_from(sec_ws_key.as_ref());
-    let headers: String = headers
-        .into_iter()
-        .map(|f| FmtHeader::fmt(&f))
-        .collect();
+    let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
     format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n{headers}\r\n")
 }
 
@@ -69,9 +124,6 @@ pub fn request(
     let host = host.as_ref();
     let path = path.as_ref().trim_start_matches('/');
     let sec_key = base64::encode(fastrand::u128(..).to_ne_bytes());
-    let headers: String = headers
-        .into_iter()
-        .map(|f| FmtHeader::fmt(&f))
-        .collect();
+    let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
     (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"),sec_key)
 }

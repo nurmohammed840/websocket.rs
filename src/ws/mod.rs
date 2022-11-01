@@ -100,6 +100,28 @@ impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
 }
 
 impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW> {
+    /// ### WebSocket Frame Header
+    ///
+    /// ```txt
+    ///  0                   1                   2                   3
+    ///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    /// +-+-+-+-+-------+-+-------------+-------------------------------+
+    /// |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+    /// |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+    /// |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+    /// | |1|2|3|       |K|             |                               |
+    /// +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+    /// |     Extended payload length continued, if payload len == 127  |
+    /// + - - - - - - - - - - - - - - - +-------------------------------+
+    /// |                               |Masking-key, if MASK set to 1  |
+    /// +-------------------------------+-------------------------------+
+    /// | Masking-key (continued)       |          Payload Data         |
+    /// +-------------------------------- - - - - - - - - - - - - - - - +
+    /// :                     Payload Data continued ...                :
+    /// + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+    /// |                     Payload Data continued ...                |
+    /// +---------------------------------------------------------------+
+    /// ```
     async fn header(&mut self) -> Result<(bool, u8, usize)> {
         loop {
             let [b1, b2] = read_buf(&mut self.stream).await?;
@@ -108,12 +130,27 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
             let rsv = b1 & 0b_111_0000;
             let opcode = b1 & 0b_1111;
             let len = (b2 & 0b_111_1111) as usize;
+
+            // Defines whether the "Payload data" is masked.  If set to 1, a
+            // masking key is present in masking-key, and this is used to unmask
+            // the "Payload data" as per [Section 5.3](https://datatracker.ietf.org/doc/html/rfc6455#section-5.3).  All frames sent from
+            // client to server have this bit set to 1.
             let is_masked = b2 & 0b_1000_0000 != 0;
 
             if rsv != 0 {
+                // MUST be `0` unless an extension is negotiated that defines meanings
+                // for non-zero values.  If a nonzero value is received and none of
+                // the negotiated extensions defines the meaning of such a nonzero
+                // value, the receiving endpoint MUST _Fail the WebSocket Connection_.
                 return proto_err("Reserve bit MUST be `0`");
             }
 
+            // A client MUST mask all frames that it sends to the server. (Note
+            // that masking is done whether or not the WebSocket Protocol is running
+            // over TLS.)  The server MUST close the connection upon receiving a
+            // frame that is not masked.
+            //
+            // A server MUST NOT mask any frames that it sends to the client.
             if SERVER == SIDE {
                 if !is_masked {
                     return proto_err("Expected masked frame");
@@ -323,12 +360,15 @@ macro_rules! default_impl_for_data {
         }
 
         impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+            /// Length of the "Payload data" in bytes.
             #[inline]
             #[allow(clippy::len_without_is_empty)]
             pub fn len(&self) -> usize {
                 self.ws.len
             }
 
+            /// Indicates that this is the final fragment in a message.  The first
+            /// fragment MAY also be the final fragment.
             #[inline]
             pub fn fin(&self) -> bool {
                 self.ws.fin

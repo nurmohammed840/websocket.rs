@@ -1,6 +1,11 @@
 use super::*;
 use http::FmtHeader;
 
+use tokio::{
+    io::BufReader,
+    net::{TcpStream, ToSocketAddrs},
+};
+
 impl WebSocket<CLIENT, BufReader<TcpStream>> {
     #[inline]
     pub async fn connect(
