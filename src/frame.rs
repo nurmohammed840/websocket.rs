@@ -43,7 +43,7 @@ impl Frame for Event<'_> {
     }
 }
 
-pub(crate) fn encode<const SIDE: bool, Mask: RandKeys>(
+pub fn encode<const SIDE: bool, Mask: RandKey>(
     writer: &mut Vec<u8>,
     fin: bool,
     opcode: u8,
@@ -94,11 +94,24 @@ pub(crate) fn encode<const SIDE: bool, Mask: RandKeys>(
 
             let dist = start.add(len + 4);
             for (index, byte) in data.iter().enumerate() {
-                dist.add(index).write(byte ^ mask[index % 4]);
+                dist.add(index).write(byte ^ mask.get_unchecked(index % 4));
             }
             len + 4
         };
         writer.set_len(filled + header_len + data_len);
+    }
+}
+
+/// Default random mask generator
+pub struct RandMask;
+
+pub trait RandKey {
+    fn keys() -> [u8; 4];
+}
+
+impl RandKey for RandMask {
+    fn keys() -> [u8; 4] {
+        fastrand::u32(..).to_ne_bytes()
     }
 }
 
@@ -108,7 +121,7 @@ mod encode {
     const DATA: &[u8] = b"Hello";
 
     struct DefaultMask;
-    impl super::RandKeys for DefaultMask {
+    impl super::RandKey for DefaultMask {
         fn keys() -> [u8; 4] {
             [55, 250, 33, 61]
         }

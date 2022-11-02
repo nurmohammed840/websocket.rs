@@ -1,14 +1,3 @@
-pub struct RandMask;
-
-pub trait RandKeys {
-    fn keys() -> [u8; 4];
-}
-
-impl RandKeys for RandMask {
-    fn keys() -> [u8; 4] {
-        fastrand::u32(..).to_ne_bytes()
-    }
-}
 
 pub struct Mask {
     index: usize,

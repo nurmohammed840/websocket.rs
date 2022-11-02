@@ -6,7 +6,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     spawn,
 };
-use web_socket::{CloseCode, DataType, Event, WebSocket};
+use web_socket::{CloseCode, DataType, Event, EventResult, WebSocket};
 
 const USAGE: &str = r#"
 USAGE:
@@ -91,7 +91,7 @@ async fn server(addr: String) -> Result<()> {
     }
 }
 
-fn on_event(ev: Event, pre: &str) -> Result<()> {
+fn on_event(ev: Event, pre: &str) -> EventResult {
     match ev {
         Event::Ping(_) => println!("{pre} Ping: {ev}"),
         Event::Pong(_) => println!("{pre} Pong: {ev}"),

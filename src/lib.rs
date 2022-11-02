@@ -1,14 +1,13 @@
 #![doc = include_str!("../README.md")]
 
 mod errors;
-mod frame;
 mod mask;
 mod utils;
 mod ws;
 
+pub mod frame;
 pub mod handshake;
 pub mod http;
-pub use frame::*;
 pub use ws::*;
 
 use errors::*;
@@ -29,7 +28,13 @@ pub enum DataType {
 
 #[derive(Debug, Clone)]
 pub enum Event<'a> {
+    /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
     Ping(&'a [u8]),
+
+    /// A Pong frame sent in response to a Ping frame must have identical
+    /// "Application data" as found in the message body of the Ping frame being replied to.
+    /// 
+    ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
     Pong(&'a [u8]),
 }
 

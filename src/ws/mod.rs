@@ -1,4 +1,5 @@
 #![allow(clippy::unusual_byte_groupings)]
+use crate::frame::Frame;
 use crate::*;
 
 /// client specific implementation
@@ -10,6 +11,9 @@ pub mod server;
 pub const SERVER: bool = true;
 /// Used to represent `WebSocket<CLIENT>` type.
 pub const CLIENT: bool = false;
+
+/// Same as: `Result<(), Box<dyn std::error::Error>>`
+pub type EventResult = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 /// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool, Stream> {
@@ -32,7 +36,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub on_event: Box<dyn FnMut(Event) -> Result<()> + Send + Sync>,
+    pub on_event: Box<dyn FnMut(Event) -> EventResult + Send + Sync>,
 
     fin: bool,
     len: usize,
@@ -55,10 +59,17 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
+    #[inline]
     pub async fn send(&mut self, msg: impl Frame) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
         self.stream.write_all(&bytes).await
+    }
+
+    /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
+    #[inline]
+    pub async fn flash(&mut self) -> Result<()> {
+        self.stream.flush().await
     }
 
     /// ### Example
@@ -81,7 +92,7 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
         data.extend_from_slice(reason);
 
         let mut writer = vec![];
-        frame::encode::<SIDE, RandMask>(&mut writer, true, 8, &data);
+        frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &data);
         self.stream.write_all(&writer).await?;
         self.stream.flush().await
     }
@@ -184,18 +195,25 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                     // Close
                     8 => {
                         let mut writer = vec![];
-                        frame::encode::<SIDE, mask::RandMask>(&mut writer, true, 8, &msg);
+                        frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &msg);
                         self.stream.write_all(&writer).await?;
 
                         return err(ErrorKind::NotConnected, "The connection was closed");
                     }
                     // Ping
                     9 => {
-                        (self.on_event)(Event::Ping(&msg))?;
+                        if let Err(error) = (self.on_event)(Event::Ping(&msg)) {
+
+                            return Err(std::io::Error::new(ErrorKind::Other, error));
+                        };
                         self.send(Event::Pong(&msg)).await?;
                     }
                     // Pong
-                    10 => (self.on_event)(Event::Pong(&msg))?,
+                    10 => {
+                        if let Err(error) = (self.on_event)(Event::Pong(&msg)) {
+                            return Err(std::io::Error::new(ErrorKind::Other, error));
+                        }
+                    }
                     _ => return proto_err("Unknown opcode"),
                 }
             } else {
@@ -265,7 +283,7 @@ macro_rules! cls_if_err {
         match $code {
             Ok(val) => Ok(val),
             Err(err) => {
-                $ws.stream.shutdown().await?;
+                $ws.stream.flush().await?;
                 Err(err)
             }
         }
@@ -359,6 +377,7 @@ macro_rules! default_impl_for_data {
             }
         }
 
+        // Re-export
         impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
             /// Length of the "Payload data" in bytes.
             #[inline]
@@ -372,6 +391,12 @@ macro_rules! default_impl_for_data {
             #[inline]
             pub fn fin(&self) -> bool {
                 self.ws.fin
+            }
+
+            /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
+            #[inline]
+            pub async fn flash(&mut self) -> Result<()> {
+                self.ws.stream.flush().await
             }
 
             #[inline]
