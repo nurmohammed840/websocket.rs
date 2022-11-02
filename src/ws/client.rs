@@ -49,6 +49,10 @@ impl WSS {
         path: impl AsRef<str>,
         headers: impl IntoIterator<Item = impl FmtHeader>,
     ) -> Result<Self> {
+        let host = addr.to_string();
+        // `TcpStream::connect` also validate `addr`, don't move this line.
+        let tcp_stream = TcpStream::connect(addr).await?; 
+
         let mut root_store = RootCertStore::empty();
         root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
             OwnedTrustAnchor::from_subject_spki_name_constraints(
@@ -63,15 +67,12 @@ impl WSS {
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        let host = addr.to_string();
         let domain = match host.rsplit_once(':').unwrap().0.try_into() {
             Ok(server_name) => server_name,
             Err(msg) => return proto_err(msg),
         };
-        println!("{:?}", domain);
         
         let connector = TlsConnector::from(Arc::new(config));
-        let tcp_stream = TcpStream::connect(addr).await?;
         let stream = BufReader::new(connector.connect(domain, tcp_stream).await?);
         let mut wss = Self::from(stream);
 
