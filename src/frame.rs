@@ -43,6 +43,16 @@ impl Frame for Event<'_> {
     }
 }
 
+pub(crate) struct Close<'a> { pub code: u16, pub reason: &'a [u8] }
+impl<'a> Frame for Close<'a> {
+    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
+        let mut data = Vec::with_capacity(2 + self.reason.len());
+        data.extend_from_slice(&self.code.to_be_bytes());
+        data.extend_from_slice(self.reason);
+        frame::encode::<SIDE, frame::RandMask>(writer, true, 8, &data);
+    }
+}
+
 pub fn encode<const SIDE: bool, Mask: RandKey>(
     writer: &mut Vec<u8>,
     fin: bool,
@@ -85,7 +95,7 @@ pub fn encode<const SIDE: bool, Mask: RandKey>(
             std::ptr::copy_nonoverlapping(data.as_ptr(), start.add(len), data_len);
             len
         } else {
-            let mask = Mask::keys();
+            let mask = Mask::key();
             let [a, b, c, d] = mask;
             start.add(len).write(a);
             start.add(len + 1).write(b);
@@ -106,11 +116,11 @@ pub fn encode<const SIDE: bool, Mask: RandKey>(
 pub struct RandMask;
 
 pub trait RandKey {
-    fn keys() -> [u8; 4];
+    fn key() -> [u8; 4];
 }
 
 impl RandKey for RandMask {
-    fn keys() -> [u8; 4] {
+    fn key() -> [u8; 4] {
         fastrand::u32(..).to_ne_bytes()
     }
 }
@@ -122,7 +132,7 @@ mod encode {
 
     struct DefaultMask;
     impl super::RandKey for DefaultMask {
-        fn keys() -> [u8; 4] {
+        fn key() -> [u8; 4] {
             [55, 250, 33, 61]
         }
     }

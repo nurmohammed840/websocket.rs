@@ -12,8 +12,8 @@ pub const SERVER: bool = true;
 /// Used to represent `WebSocket<CLIENT>` type.
 pub const CLIENT: bool = false;
 
-/// Same as: `Result<(), Box<dyn std::error::Error>>`
-pub type EventResult = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
+pub type EventResult =
+    std::result::Result<(), (CloseCode, Box<dyn std::error::Error + Send + Sync>)>;
 
 /// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool, Stream> {
@@ -84,16 +84,11 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
     pub async fn close(mut self, code: impl Into<u16>, reason: impl AsRef<[u8]>) -> Result<()> {
-        let code: u16 = code.into();
-        let reason = reason.as_ref();
-
-        let mut data = Vec::with_capacity(2 + reason.len());
-        data.extend_from_slice(&code.to_be_bytes());
-        data.extend_from_slice(reason);
-
-        let mut writer = vec![];
-        frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &data);
-        self.stream.write_all(&writer).await?;
+        self.send(frame::Close {
+            code: code.into(),
+            reason: reason.as_ref(),
+        })
+        .await?;
         self.stream.flush().await
     }
 }
@@ -202,16 +197,25 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                     }
                     // Ping
                     9 => {
-                        if let Err(error) = (self.on_event)(Event::Ping(&msg)) {
-
-                            return Err(std::io::Error::new(ErrorKind::Other, error));
+                        if let Err((code, reason)) = (self.on_event)(Event::Ping(&msg)) {
+                            self.send(frame::Close {
+                                code: code as u16,
+                                reason: reason.to_string().as_bytes(),
+                            })
+                            .await?;
+                            return Err(std::io::Error::new(ErrorKind::Other, reason));
                         };
                         self.send(Event::Pong(&msg)).await?;
                     }
                     // Pong
                     10 => {
-                        if let Err(error) = (self.on_event)(Event::Pong(&msg)) {
-                            return Err(std::io::Error::new(ErrorKind::Other, error));
+                        if let Err((code, reason)) = (self.on_event)(Event::Pong(&msg)) {
+                            self.send(frame::Close {
+                                code: code as u16,
+                                reason: reason.to_string().as_bytes(),
+                            })
+                            .await?;
+                            return Err(std::io::Error::new(ErrorKind::Other, reason));
                         }
                     }
                     _ => return proto_err("Unknown opcode"),
