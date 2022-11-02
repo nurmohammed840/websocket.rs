@@ -20,11 +20,19 @@ use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
 };
 
+/// Used to represent `WebSocket<SERVER>` type.
+pub const SERVER: bool = true;
+/// Used to represent `WebSocket<CLIENT>` type.
+pub const CLIENT: bool = false;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DataType {
     Text,
     Binary,
 }
+
+pub type EventResult =
+    std::result::Result<(), (CloseCode, Box<dyn std::error::Error + Send + Sync>)>;
 
 #[derive(Debug, Clone)]
 pub enum Event<'a> {

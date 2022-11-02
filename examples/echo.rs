@@ -6,7 +6,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     spawn,
 };
-use web_socket::{CloseCode, DataType, Event, EventResult, WebSocket};
+use web_socket::{client::WS, CloseCode, DataType, Event, EventResult};
 
 const USAGE: &str = r#"
 USAGE:
@@ -21,7 +21,7 @@ COMMAND:
 "#;
 
 async fn client(uri: String) -> Result<()> {
-    let mut ws = WebSocket::connect(uri, "/").await?;
+    let mut ws = WS::connect(uri, "/").await?;
     println!("[Client] Connected to {}", ws.stream.get_ref().peer_addr()?);
 
     ws.on_event = Box::new(|ev| on_event(ev, "[ECHO]"));

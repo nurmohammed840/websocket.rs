@@ -3,7 +3,7 @@ mod utils;
 use std::io::Result;
 use tokio::{net::TcpListener, spawn};
 use utils::ws;
-use web_socket::WebSocket;
+use web_socket::client::WS;
 
 fn main() -> Result<()> {
     utils::block_on(async {
@@ -28,7 +28,7 @@ async fn server() -> Result<()> {
 }
 
 async fn client() -> Result<()> {
-    let mut ws = WebSocket::connect("localhost:1234", "/chat").await?;
+    let mut ws = WS::connect("localhost:1234", "/chat").await?;
     println!("[Client] Connected to {}", ws.stream.get_ref().peer_addr()?);
 
     println!("Server: {}", read_msg!(ws)?);

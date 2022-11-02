@@ -7,14 +7,6 @@ pub mod client;
 /// server specific implementation
 pub mod server;
 
-/// Used to represent `WebSocket<SERVER>` type.
-pub const SERVER: bool = true;
-/// Used to represent `WebSocket<CLIENT>` type.
-pub const CLIENT: bool = false;
-
-pub type EventResult =
-    std::result::Result<(), (CloseCode, Box<dyn std::error::Error + Send + Sync>)>;
-
 /// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool, Stream> {
     pub stream: Stream,
@@ -24,10 +16,10 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     /// ### Example
     ///
     /// ```no_run
-    /// use web_socket::{WebSocket, Event};
+    /// use web_socket::{client::WS, Event};
     /// # async {
     ///
-    /// let mut ws = WebSocket::connect("localhost:80", "/").await?;
+    /// let mut ws = WS::connect("localhost:80", "/").await?;
     /// // Fire when received ping/pong frame.
     /// ws.on_event = Box::new(|ev| {
     ///     println!("{ev:?}");
@@ -38,6 +30,8 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     /// ```
     pub on_event: Box<dyn FnMut(Event) -> EventResult + Send + Sync>,
 
+    is_closed: bool,
+
     fin: bool,
     len: usize,
 }
@@ -46,10 +40,10 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// ### Example
     ///
     /// ```no_run
-    /// use web_socket::{WebSocket, CloseCode, Event};
+    /// use web_socket::{client::WS, CloseCode, Event};
     /// # async {
     ///
-    /// let mut ws = WebSocket::connect("localhost:80", "/").await?;
+    /// let mut ws = WS::connect("localhost:80", "/").await?;
     /// ws.send("Text Message").await?;
     /// ws.send(b"Binary Data").await?;
     ///
@@ -75,10 +69,10 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// ### Example
     ///
     /// ```no_run
-    /// use web_socket::{WebSocket, CloseCode};
+    /// use web_socket::{client::WS, CloseCode};
     /// # async {
     ///
-    /// let ws = WebSocket::connect("localhost:80", "/").await?;
+    /// let ws = WS::connect("localhost:80", "/").await?;
     /// ws.close(CloseCode::Normal, "Closed successfully").await?;
     ///
     /// # std::io::Result::<_>::Ok(()) };
@@ -99,6 +93,9 @@ impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
         Self {
             stream,
             on_event: Box::new(|_| Ok(())),
+
+            is_closed: false,
+
             fin: true,
             len: 0,
         }
@@ -203,7 +200,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                                 reason: reason.to_string().as_bytes(),
                             })
                             .await?;
-                            return Err(std::io::Error::new(ErrorKind::Other, reason));
+                            return err(ErrorKind::Other, reason);
                         };
                         self.send(Event::Pong(&msg)).await?;
                     }
@@ -215,7 +212,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                                 reason: reason.to_string().as_bytes(),
                             })
                             .await?;
-                            return Err(std::io::Error::new(ErrorKind::Other, reason));
+                            return err(ErrorKind::Other, reason);
                         }
                     }
                     _ => return proto_err("Unknown opcode"),
@@ -283,15 +280,19 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
 }
 
 macro_rules! cls_if_err {
-    [$ws:expr, $code:expr] => {
+    [$ws:expr, $code:expr] => ({
+        if $ws.is_closed {
+            return err(ErrorKind::NotConnected, "Read after close");
+        }
         match $code {
             Ok(val) => Ok(val),
             Err(err) => {
+                $ws.is_closed = true;
                 $ws.stream.flush().await?;
                 Err(err)
             }
         }
-    };
+    });
 }
 macro_rules! read_exect {
     [$this:expr, $buf:expr, $code:expr] => {

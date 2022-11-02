@@ -1,33 +1,97 @@
 use super::*;
 use http::FmtHeader;
-
+use std::{fmt::Display, sync::Arc};
 use tokio::{
     io::BufReader,
     net::{TcpStream, ToSocketAddrs},
 };
+use tokio_rustls::{
+    client::TlsStream,
+    rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore},
+    TlsConnector,
+};
 
-impl WebSocket<CLIENT, BufReader<TcpStream>> {
+pub type WS = WebSocket<CLIENT, BufReader<TcpStream>>;
+pub type WSS = WebSocket<CLIENT, BufReader<TlsStream<TcpStream>>>;
+
+impl WS {
     #[inline]
-    pub async fn connect(
-        addr: impl ToSocketAddrs + std::fmt::Display,
-        path: impl AsRef<str>,
-    ) -> Result<Self> {
+    pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
+    where
+        A: ToSocketAddrs + Display,
+    {
         Self::connect_with_headers(addr, path, [("", ""); 0]).await
     }
 
     pub async fn connect_with_headers(
-        addr: impl ToSocketAddrs + std::fmt::Display,
+        addr: impl ToSocketAddrs + Display,
         path: impl AsRef<str>,
         headers: impl IntoIterator<Item = impl FmtHeader>,
     ) -> Result<Self> {
         let host = addr.to_string();
-        let mut stream = BufReader::new(TcpStream::connect(addr).await?);
+        let mut ws = Self::from(BufReader::new(TcpStream::connect(addr).await?));
+        ws.handshake(&host, path.as_ref(), headers).await?;
+        Ok(ws)
+    }
+}
 
+impl WSS {
+    #[inline]
+    pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
+    where
+        A: ToSocketAddrs + Display,
+    {
+        Self::connect_with_headers(addr, path, [("", ""); 0]).await
+    }
+
+    pub async fn connect_with_headers(
+        addr: impl ToSocketAddrs + Display,
+        path: impl AsRef<str>,
+        headers: impl IntoIterator<Item = impl FmtHeader>,
+    ) -> Result<Self> {
+        let mut root_store = RootCertStore::empty();
+        root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject,
+                ta.spki,
+                ta.name_constraints,
+            )
+        }));
+
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        let host = addr.to_string();
+        let domain = match host.rsplit_once(':').unwrap().0.try_into() {
+            Ok(server_name) => server_name,
+            Err(msg) => return proto_err(msg),
+        };
+        println!("{:?}", domain);
+        
+        let connector = TlsConnector::from(Arc::new(config));
+        let tcp_stream = TcpStream::connect(addr).await?;
+        let stream = BufReader::new(connector.connect(domain, tcp_stream).await?);
+        let mut wss = Self::from(stream);
+
+        wss.handshake(&host, path.as_ref(), headers).await?;
+        Ok(wss)
+    }
+}
+
+impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
+    async fn handshake(
+        &mut self,
+        host: &str,
+        path: &str,
+        headers: impl IntoIterator<Item = impl FmtHeader>,
+    ) -> Result<()> {
         let (request, sec_key) = handshake::request(host, path, headers);
-        stream.get_mut().write_all(request.as_bytes()).await?;
+        self.stream.write_all(request.as_bytes()).await?;
 
-        let mut bytes = stream.fill_buf().await?;
-        let total_len = bytes.len();
+        let mut bytes = self.stream.fill_buf().await?;
+        let mut amt = bytes.len();
 
         let header = http::Record::from_raw(&mut bytes).map_err(invalid_data)?;
         if header.schema != b"HTTP/1.1 101 Switching Protocols" {
@@ -42,10 +106,9 @@ impl WebSocket<CLIENT, BufReader<TcpStream>> {
             return proto_err("Invalid accept key");
         }
 
-        let remaining = bytes.len();
-        stream.consume(total_len - remaining);
-
-        Ok(Self::from(stream))
+        amt -= bytes.len();
+        self.stream.consume(amt);
+        Ok(())
     }
 }
 
@@ -83,36 +146,3 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
 }
 
 default_impl_for_data!();
-
-// ----------------------------------------------------------------------
-
-// use std::sync::Arc;
-// use tokio_rustls::{
-//     rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore},
-//     TlsConnector,
-// };
-
-// async fn _k() -> Result<()> {
-//     let mut root_store = RootCertStore::empty();
-//     root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-//         OwnedTrustAnchor::from_subject_spki_name_constraints(
-//             ta.subject,
-//             ta.spki,
-//             ta.name_constraints,
-//         )
-//     }));
-
-//     let config = ClientConfig::builder()
-//         .with_safe_defaults()
-//         .with_root_certificates(root_store)
-//         .with_no_client_auth();
-
-//     let connector = TlsConnector::from(Arc::new(config));
-
-//     let mut stream = connector.connect(
-//         "example.com".try_into().expect("invalid DNS name"),
-//         TcpStream::connect("example.com:443").await?,
-//     );
-//     let a = stream.await?;
-//     Ok(())
-// }

@@ -23,10 +23,10 @@ You can run this example with: `cargo run --example ping_pong`
 
 ```rust no_run
 use std::io::Result;
-use web_socket::{WebSocket, Event};
+use web_socket::{client::WSS, Event};
 
 async fn example() -> Result<()> {
-    let mut ws = WebSocket::connect("ws.ifelse.io:80", "/").await?;
+    let mut ws = WSS::connect("ws.ifelse.io:443", "/").await?;
 
     ws.on_event = Box::new(|ev| {
         if let Event::Pong(_) = ev {
