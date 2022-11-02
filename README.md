@@ -23,7 +23,7 @@ You can run this example with: `cargo run --example ping_pong`
 
 ```rust no_run
 use std::io::Result;
-use web_socket::{client::WSS, Event};
+use web_socket::{client::WSS, DataType, Event};
 
 async fn example() -> Result<()> {
     let mut ws = WSS::connect("ws.ifelse.io:443", "/").await?;
@@ -40,6 +40,7 @@ async fn example() -> Result<()> {
         ws.send("Copy Cat!").await?;
 
         let mut data = ws.recv().await?;
+        assert_eq!(data.ty, DataType::Text);
 
         let mut buf = vec![];
         data.read_to_end(&mut buf).await?;
@@ -58,7 +59,7 @@ For more examples, see [./examples](https://github.com/nurmohammed840/websocket.
 - [x]  Support fragmented messages.
 - [x]  Allow sending control frame.
 - [x]  Client support wss connection over TLS
-- [ ]  (TODO) Support sync API
+- [ ]  Support sync API (TODO)
 
 #### License
 
