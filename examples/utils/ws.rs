@@ -19,13 +19,13 @@ fn handshake_response(request: &mut &[u8]) -> result::Result<String, &'static st
 }
 
 pub async fn upgrade(stream: TcpStream) -> Result<WebSocket<SERVER, BufReader<TcpStream>>> {
-    let addr = stream.peer_addr()?;
+    // let addr = stream.peer_addr()?;
     let mut stream = BufReader::new(stream);
     let mut data = stream.fill_buf().await?;
     let mut amt = data.len();
 
-    let req = str::from_utf8(data).map_err(invalid_data)?;
-    println!("[Server] Incoming request from {addr}\n\n{req}");
+    // let req = str::from_utf8(data).map_err(invalid_data)?;
+    // println!("[Server] Incoming request from {addr}\n\n{req}");
     let res = handshake_response(&mut data).map_err(invalid_data)?;
     // println!("[Server] Sending response\n\n{res}");
 

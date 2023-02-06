@@ -341,7 +341,7 @@ macro_rules! default_impl_for_data {
 
             #[inline]
             pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
-                self.read_to_end_with_limit(buf, 8 * 1024 * 1024).await
+                self.read_to_end_with_limit(buf, 16 * 1024 * 1024).await
             }
 
             pub async fn read_to_end_with_limit(
@@ -354,6 +354,7 @@ macro_rules! default_impl_for_data {
                     loop {
                         let additional = self.len();
                         amt += additional;
+                        // println!("Amount: {} KB", amt / 1024); // TODO: Remove this line
                         if amt > limit {
                             return err(ErrorKind::Other, "Data read limit exceeded");
                         }
