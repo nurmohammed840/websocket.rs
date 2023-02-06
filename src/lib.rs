@@ -107,7 +107,6 @@ impl From<CloseCode> for u16 {
 }
 
 impl From<u16> for CloseCode {
-    #[inline]
     fn from(value: u16) -> Self {
         match value {
             1000 => CloseCode::Normal,
