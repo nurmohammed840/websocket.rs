@@ -1,4 +1,3 @@
-
 pub struct Mask {
     index: usize,
     pub keys: [u8; 4],

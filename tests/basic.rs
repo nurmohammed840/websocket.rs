@@ -25,7 +25,6 @@ async fn client(mut ws: WebSocket<CLIENT>) -> Result<()> {
     assert_eq!(data.len(), MSG.len());
     assert_eq!(data.ty, DataType::Text);
 
-
     let mut buf = vec![];
     data.read_to_end(&mut buf).await?;
     println!("{:?}", String::from_utf8(buf));
@@ -38,7 +37,7 @@ fn example() -> Result<()> {
         let mut duplex = duplex(8192);
         let server = tokio::spawn(server(WebSocket::from(BufReader::new(duplex.0))));
         let client = tokio::spawn(client(WebSocket::from(BufReader::new(duplex.1))));
-        
+
         server.await??;
         client.await??;
         Ok(())

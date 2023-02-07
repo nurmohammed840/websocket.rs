@@ -21,7 +21,7 @@ async fn run_test(case: u32) -> Result<()> {
         ErrorKind::NotConnected => {
             println!("Connection was closed successfully");
             Ok(())
-        },
+        }
         _ => ws.close(CloseCode::InvalidPayload, "").await,
     }
 }

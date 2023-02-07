@@ -41,7 +41,7 @@ pub enum Event<'a> {
 
     /// A Pong frame sent in response to a Ping frame must have identical
     /// "Application data" as found in the message body of the Ping frame being replied to.
-    /// 
+    ///
     ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
     Pong(&'a [u8]),
 }

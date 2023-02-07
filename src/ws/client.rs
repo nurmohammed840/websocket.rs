@@ -51,7 +51,7 @@ impl WSS {
     ) -> Result<Self> {
         let host = addr.to_string();
         // `TcpStream::connect` also validate `addr`, don't move this line.
-        let tcp_stream = TcpStream::connect(addr).await?; 
+        let tcp_stream = TcpStream::connect(addr).await?;
 
         let mut root_store = RootCertStore::empty();
         root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
@@ -71,7 +71,7 @@ impl WSS {
             Ok(server_name) => server_name,
             Err(msg) => return proto_err(msg),
         };
-        
+
         let connector = TlsConnector::from(Arc::new(config));
         let stream = BufReader::new(connector.connect(domain, tcp_stream).await?);
         let mut wss = Self::from(stream);
@@ -114,7 +114,6 @@ impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
 }
 
 impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, RW> {
-    #[inline]
     pub async fn recv(&mut self) -> Result<Data<RW>> {
         let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
         Ok(client::Data { ty, ws: self })

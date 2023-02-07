@@ -43,7 +43,10 @@ impl Frame for Event<'_> {
     }
 }
 
-pub(crate) struct Close<'a> { pub code: u16, pub reason: &'a [u8] }
+pub(crate) struct Close<'a> {
+    pub code: u16,
+    pub reason: &'a [u8],
+}
 impl<'a> Frame for Close<'a> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         let mut data = Vec::with_capacity(2 + self.reason.len());

@@ -8,7 +8,6 @@ impl<Stream> WebSocket<SERVER, Stream> {
 }
 
 impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SERVER, RW> {
-    #[inline]
     pub async fn recv(&mut self) -> Result<Data<RW>> {
         let (ty, mask) = cls_if_err!(self, {
             let ty = self.read_data_frame_header().await?;

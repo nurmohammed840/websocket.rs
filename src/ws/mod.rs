@@ -262,7 +262,6 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
         }
     }
 
-    #[inline]
     async fn read_data_frame_header(&mut self) -> Result<DataType> {
         self.discard_old_data().await?;
 
@@ -315,7 +314,6 @@ macro_rules! read_exect {
 macro_rules! default_impl_for_data {
     () => {
         impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
-            #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 cls_if_err!(self.ws, {
                     if self.len() == 0 {
@@ -341,7 +339,7 @@ macro_rules! default_impl_for_data {
 
             #[inline]
             pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
-                self.read_to_end_with_limit(buf, 8 * 1024 * 1024).await
+                self.read_to_end_with_limit(buf, 16 * 1024 * 1024).await
             }
 
             pub async fn read_to_end_with_limit(

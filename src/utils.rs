@@ -9,7 +9,6 @@ where
     Ok(buf)
 }
 
-#[inline]
 pub async fn read_bytes<R>(stream: &mut R, len: usize, cb: impl FnOnce(&[u8])) -> Result<usize>
 where
     R: Unpin + AsyncBufRead,

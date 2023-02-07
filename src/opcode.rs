@@ -75,7 +75,6 @@ impl Opcode {
 
 impl TryFrom<u8> for Opcode {
     type Error = &'static str;
-    #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value {
             0 => Opcode::Continue,

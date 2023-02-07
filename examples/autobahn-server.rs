@@ -28,7 +28,7 @@ async fn handle_connection(stream: TcpStream) -> Result<()> {
         ErrorKind::NotConnected => {
             println!("The connection was closed");
             Ok(())
-        },
+        }
         _ => ws.close(CloseCode::InvalidPayload, "").await,
     }
 }
