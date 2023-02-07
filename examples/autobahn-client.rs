@@ -19,19 +19,27 @@ async fn run_test(case: u32) -> Result<()> {
     let mut ws = WS::connect(ADDR, format!("/runCase?case={case}&{AGENT}")).await?;
     match echo(&mut ws).await.err().unwrap().kind() {
         ErrorKind::NotConnected => {
-            println!("Connection was closed successfully");
+            println!("Test case {case} end successfully");
             Ok(())
         }
-        _ => ws.close(CloseCode::InvalidPayload, "").await,
+        _ => {
+            println!("{case}: Closing...");
+            ws.close(CloseCode::InvalidPayload, "").await
+        }
     }
 }
 
 async fn echo(ws: &mut WebSocket<CLIENT, tokio::io::BufReader<TcpStream>>) -> Result<()> {
+    let mut i = 0;
     loop {
         let mut data = ws.recv().await?;
+        i += 1;
+        println!("Data ID: {i}, Fin: {}, Len: {}, Type: {:?}", data.fin(), data.len(), data.ty);
 
         let mut msg = vec![];
         data.read_to_end(&mut msg).await?;
+
+        println!("Msg len: {}", msg.len());
 
         match data.ty {
             DataType::Binary => ws.send(&*msg).await?,
@@ -52,10 +60,11 @@ async fn update_reports() -> Result<()> {
 
 fn main() {
     utils::block_on(async {
-        let total = get_case_count().await.expect("Error getting case count");
-        for case in 1..=total {
-            let _ = run_test(case).await;
-        }
+        // let total = get_case_count().await.expect("Error getting case count");
+        // for case in 1..=total {
+        //     let _ = run_test(case).await;
+        // }
+        println!("{:#?}", run_test(259).await);
         update_reports().await.expect("Error updating reports");
     });
 }

@@ -352,6 +352,7 @@ macro_rules! default_impl_for_data {
                     loop {
                         let additional = self.len();
                         amt += additional;
+                        // println!("Amount: {} KB", amt / 1024); // TODO: Remove this line
                         if amt > limit {
                             return err(ErrorKind::Other, "Data read limit exceeded");
                         }
