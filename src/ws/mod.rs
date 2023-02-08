@@ -186,7 +186,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                 match opcode {
                     // Close
                     8 => {
-                        // TODO: Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...
+                        // Feature: Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...
                         if let Some(1000..=1003 | 1007..=1011 | 1015) = msg
                             .get(..2)
                             .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
@@ -225,9 +225,10 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                     _ => return proto_err("Unknown opcode"),
                 }
             } else {
-                if !fin && len == 0 {
-                    return proto_err("Fragment length shouldn't be zero");
-                }
+                // // Feature: This prevents DOS attacks, where the client intentionally sends consecutive fragment frames of size 0.
+                // if !fin && len == 0 {
+                //     return proto_err("Fragment length shouldn't be zero");
+                // }
                 let len = match len {
                     126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
                     127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
@@ -238,8 +239,6 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
         }
     }
 
-    /// After calling this function.
-    /// this statement is not possible `self.fin == false && self.len == 0`
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
