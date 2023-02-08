@@ -47,12 +47,11 @@ async fn update_reports() -> Result<()> {
     ws.close(CloseCode::Normal, "").await
 }
 
-fn main() {
-    utils::block_on(async {
-        let total = get_case_count().await.expect("Error getting case count");
-        for case in 1..=total {
-            let _ = run_test(case).await;
-        }
-        update_reports().await.expect("Error updating reports");
-    });
+#[tokio::main]
+async fn main() {
+    let total = get_case_count().await.expect("Error getting case count");
+    for case in 1..=total {
+        let _ = run_test(case).await;
+    }
+    update_reports().await.expect("Error updating reports");
 }

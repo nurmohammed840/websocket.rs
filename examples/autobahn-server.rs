@@ -10,15 +10,14 @@ use web_socket::{CloseCode, DataType, WebSocket, SERVER};
 
 const ADDR: &str = "127.0.0.1:9002";
 
-fn main() {
-    utils::block_on(async {
-        println!("Listening on: {ADDR}");
-        let listener = TcpListener::bind(ADDR).await.unwrap();
+#[tokio::main]
+async fn main() {
+    println!("Listening on: {ADDR}");
+    let listener = TcpListener::bind(ADDR).await.unwrap();
 
-        while let Ok((stream, _addr)) = listener.accept().await {
-            spawn(handle_connection(stream));
-        }
-    });
+    while let Ok((stream, _addr)) = listener.accept().await {
+        spawn(handle_connection(stream));
+    }
 }
 
 async fn handle_connection(stream: TcpStream) -> Result<()> {

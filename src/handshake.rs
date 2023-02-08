@@ -48,7 +48,7 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
     let mut sha1 = Sha1::new();
     sha1.update(sec_ws_key.as_ref());
     sha1.update(MAGIC_STRING);
-    base64::encode(sha1.finalize())
+    base64_encode(sha1.finalize())
 }
 
 /// ## Server handshake response
@@ -123,7 +123,12 @@ pub fn request(
 ) -> (String, String) {
     let host = host.as_ref();
     let path = path.as_ref().trim_start_matches('/');
-    let sec_key = base64::encode(fastrand::u128(..).to_ne_bytes());
+    let sec_key = base64_encode(fastrand::u128(..).to_ne_bytes());
     let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
     (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"),sec_key)
+}
+
+#[inline]
+fn base64_encode(string: impl AsRef<[u8]>) -> String {
+    base64::Engine::encode(&base64::prelude::BASE64_STANDARD, string)
 }

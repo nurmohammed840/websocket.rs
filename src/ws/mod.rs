@@ -187,22 +187,26 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                 match opcode {
                     // Close
                     8 => {
-                        // TODO: (Case 7.5.1) Do we really need to check invalid UTF8 (`msg`) payload ? And Then drop TCP ?
-                        // Maybe We should not!
-                        let mut writer = vec![];
-                        frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &msg);
-                        self.stream.write_all(&writer).await?;
-
+                        // TODO: Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...
+                        if let Some(1000..=1003 | 1007..=1011 | 1015) = msg
+                            .get(..2)
+                            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+                        {
+                            let mut writer = vec![];
+                            frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &msg);
+                            let _ = self.stream.write_all(&writer).await;
+                        }
                         return err(ErrorKind::NotConnected, "The connection was closed");
                     }
                     // Ping
                     9 => {
                         if let Err((code, reason)) = (self.on_event)(Event::Ping(&msg)) {
-                            self.send(frame::Close {
-                                code: code as u16,
-                                reason: reason.to_string().as_bytes(),
-                            })
-                            .await?;
+                            let _ = self
+                                .send(frame::Close {
+                                    code: code as u16,
+                                    reason: reason.to_string().as_bytes(),
+                                })
+                                .await;
                             return err(ErrorKind::Other, reason);
                         };
                         self.send(Event::Pong(&msg)).await?;
@@ -210,11 +214,12 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                     // Pong
                     10 => {
                         if let Err((code, reason)) = (self.on_event)(Event::Pong(&msg)) {
-                            self.send(frame::Close {
-                                code: code as u16,
-                                reason: reason.to_string().as_bytes(),
-                            })
-                            .await?;
+                            let _ = self
+                                .send(frame::Close {
+                                    code: code as u16,
+                                    reason: reason.to_string().as_bytes(),
+                                })
+                                .await;
                             return err(ErrorKind::Other, reason);
                         }
                     }
