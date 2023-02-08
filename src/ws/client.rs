@@ -130,7 +130,6 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
         self.ws.read_fragmented_header().await
     }
 
-    #[inline]
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = buf.len().min(self.ws.len);
         if len > 0 {

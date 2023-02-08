@@ -5,36 +5,42 @@ pub trait Frame {
 }
 
 impl<T: Frame + ?Sized> Frame for &T {
+    #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
     }
 }
 
 impl<T: Frame + ?Sized> Frame for Box<T> {
+    #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
     }
 }
 
 impl Frame for str {
+    #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         encode::<SIDE, RandMask>(writer, true, 1, self.as_bytes());
     }
 }
 
 impl Frame for [u8] {
+    #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         encode::<SIDE, RandMask>(writer, true, 2, self);
     }
 }
 
 impl<const N: usize> Frame for [u8; N] {
+    #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         encode::<SIDE, RandMask>(writer, true, 2, self);
     }
 }
 
 impl Frame for Event<'_> {
+    #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         match self {
             Event::Ping(data) => encode::<SIDE, RandMask>(writer, true, 9, data),
@@ -123,6 +129,7 @@ pub trait RandKey {
 }
 
 impl RandKey for RandMask {
+    #[inline]
     fn key() -> [u8; 4] {
         fastrand::u32(..).to_ne_bytes()
     }

@@ -1,6 +1,6 @@
 //! This module contain some utility function to work with http protocol.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 /// # Example
 ///
@@ -20,12 +20,12 @@ impl<T: FmtHeader> FmtHeader for &T {
         T::fmt(this)
     }
 }
-impl<T: std::fmt::Display> FmtHeader for [T; 2] {
+impl<T: fmt::Display> FmtHeader for [T; 2] {
     fn fmt([key, value]: &Self) -> String {
         format!("{key}: {value}\r\n")
     }
 }
-impl<K: std::fmt::Display, V: std::fmt::Display> FmtHeader for (K, V) {
+impl<K: fmt::Display, V: fmt::Display> FmtHeader for (K, V) {
     fn fmt((key, value): &Self) -> String {
         format!("{key}: {value}\r\n")
     }
@@ -101,8 +101,8 @@ impl<'a> Record<'a> {
     }
 }
 
-impl<'a> std::fmt::Debug for Record<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> fmt::Debug for Record<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut header = vec![];
         for (key, value) in &self.header {
             if let Ok(value) = std::str::from_utf8(value) {

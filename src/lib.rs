@@ -14,7 +14,7 @@ use errors::*;
 use mask::*;
 use utils::*;
 
-use std::io::Result;
+use std::{io::Result, fmt};
 
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
@@ -56,8 +56,8 @@ impl Event<'_> {
     }
 }
 
-impl std::fmt::Display for Event<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Event<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", std::str::from_utf8(self.data()).unwrap_or(""))
     }
 }

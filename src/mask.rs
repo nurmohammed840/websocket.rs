@@ -12,7 +12,6 @@ impl From<[u8; 4]> for Mask {
 impl Iterator for Mask {
     type Item = u8;
 
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let key = self.keys[self.index % 4];
         self.index += 1;
