@@ -293,7 +293,7 @@ macro_rules! cls_if_err {
             Ok(val) => Ok(val),
             Err(err) => {
                 $ws.is_closed = true;
-                $ws.stream.flush().await?;
+                let _ = $ws.stream.flush().await;
                 Err(err)
             }
         }

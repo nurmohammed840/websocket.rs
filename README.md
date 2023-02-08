@@ -61,6 +61,9 @@ For more examples, see [./examples](https://github.com/nurmohammed840/websocket.
 - [x]  Client support wss connection over TLS
 - [ ]  Support sync API (TODO)
 
+
+It passed the Autobahn WebSocket protocol [testsuite](https://github.com/crossbario/autobahn-testsuite)
+
 #### License
 
 This project is licensed under [Apache License 2.0](https://github.com/nurmohammed840/websocket.rs/blob/master/LICENSE)
