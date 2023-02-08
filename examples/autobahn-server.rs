@@ -15,8 +15,7 @@ fn main() {
         println!("Listening on: {ADDR}");
         let listener = TcpListener::bind(ADDR).await.unwrap();
 
-        while let Ok((stream, addr)) = listener.accept().await {
-            println!("Peer address: {addr}");
+        while let Ok((stream, _addr)) = listener.accept().await {
             spawn(handle_connection(stream));
         }
     });
@@ -25,11 +24,8 @@ fn main() {
 async fn handle_connection(stream: TcpStream) -> Result<()> {
     let mut ws = ws::upgrade(stream).await?;
     match echo(&mut ws).await.err().unwrap().kind() {
-        ErrorKind::NotConnected => {
-            println!("The connection was closed");
-            Ok(())
-        }
-        _ => ws.close(CloseCode::InvalidPayload, "").await,
+        ErrorKind::NotConnected | ErrorKind::InvalidData => Ok(()),
+        _ => ws.close(CloseCode::ProtocolError, "").await,
     }
 }
 

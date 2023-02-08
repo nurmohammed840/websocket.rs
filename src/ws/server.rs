@@ -33,16 +33,19 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
     }
 
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let amt = read_bytes(&mut self.ws.stream, buf.len().min(self.ws.len), |bytes| {
-            bytes
-                .iter()
-                .zip(&mut self.mask)
-                .zip(buf.iter_mut())
-                .for_each(|((byte, key), dist)| *dist = byte ^ key);
-        })
-        .await?;
-        self.ws.len -= amt;
-        Ok(amt)
+        let mut len = buf.len().min(self.ws.len);
+        if len > 0 {
+            len = read_bytes(&mut self.ws.stream, len, |bytes| {
+                bytes
+                    .iter()
+                    .zip(&mut self.mask)
+                    .zip(buf.iter_mut())
+                    .for_each(|((byte, key), dist)| *dist = byte ^ key);
+            })
+            .await?;
+            self.ws.len -= len;
+        }
+        Ok(len)
     }
 }
 

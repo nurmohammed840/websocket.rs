@@ -132,16 +132,15 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
 
     #[inline]
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let amt = read_bytes(
-            &mut self.ws.stream,
-            buf.len().min(self.ws.len),
-            |bytes| unsafe {
+        let mut len = buf.len().min(self.ws.len);
+        if len > 0 {
+            len = read_bytes(&mut self.ws.stream, len, |bytes| unsafe {
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
-            },
-        )
-        .await?;
-        self.ws.len -= amt;
-        Ok(amt)
+            })
+            .await?;
+            self.ws.len -= len;
+        }
+        Ok(len)
     }
 }
 

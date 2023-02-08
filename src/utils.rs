@@ -9,6 +9,7 @@ where
     Ok(buf)
 }
 
+/** Don't call this function, When argument `len` is `0` */
 pub async fn read_bytes<R>(stream: &mut R, len: usize, cb: impl FnOnce(&[u8])) -> Result<usize>
 where
     R: Unpin + AsyncBufRead,

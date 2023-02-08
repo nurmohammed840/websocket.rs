@@ -30,6 +30,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     /// ```
     pub on_event: Box<dyn FnMut(Event) -> EventResult + Send + Sync>,
 
+    /// See: [cls_if_err]
     is_closed: bool,
 
     fin: bool,
@@ -186,6 +187,8 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                 match opcode {
                     // Close
                     8 => {
+                        // TODO: (Case 7.5.1) Do we really need to check invalid UTF8 (`msg`) payload ? And Then drop TCP ?
+                        // Maybe We should not!
                         let mut writer = vec![];
                         frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &msg);
                         self.stream.write_all(&writer).await?;
@@ -352,7 +355,6 @@ macro_rules! default_impl_for_data {
                     loop {
                         let additional = self.len();
                         amt += additional;
-                        // println!("Amount: {} KB", amt / 1024); // TODO: Remove this line
                         if amt > limit {
                             return err(ErrorKind::Other, "Data read limit exceeded");
                         }

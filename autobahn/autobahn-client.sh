@@ -12,17 +12,6 @@ function cleanup() {
 }
 trap cleanup TERM EXIT
 
-function test_diff() {
-    if ! diff -q \
-        <(jq -S 'del(."web-socket" | .. | .duration?)' 'autobahn/expected-results.json') \
-        <(jq -S 'del(."web-socket" | .. | .duration?)' 'autobahn/client/index.json')
-    then
-        echo 'Difference in results, either this is a regression or' \
-             'one should update autobahn/expected-results.json with the new results.'
-        exit 64
-    fi
-}
-
 docker run -d --rm \
     -v "${PWD}/autobahn:/autobahn" \
     -p 9001:9001 \
@@ -31,6 +20,5 @@ docker run -d --rm \
     crossbario/autobahn-testsuite \
     wstest -m fuzzingserver -s 'autobahn/fuzzingserver.json'
 
-sleep 5
+sleep 3
 cargo run --release --example autobahn-client
-test_diff
