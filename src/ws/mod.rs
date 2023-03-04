@@ -1,5 +1,4 @@
 #![allow(clippy::unusual_byte_groupings)]
-use crate::frame::Frame;
 use crate::*;
 
 /// client specific implementation
@@ -9,6 +8,7 @@ pub mod server;
 
 /// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool, Stream> {
+    /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
 
     /// Listen for incoming websocket [Event].
@@ -38,6 +38,8 @@ pub struct WebSocket<const SIDE: bool, Stream> {
 }
 
 impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
+    /// send message to a endpoint by writing it to a WebSocket stream.
+    /// 
     /// ### Example
     ///
     /// ```no_run
@@ -54,7 +56,7 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub async fn send(&mut self, msg: impl Frame) -> Result<()> {
+    pub async fn send(&mut self, msg: impl Message) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
         self.stream.write_all(&bytes).await
@@ -66,6 +68,8 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
         self.stream.flush().await
     }
 
+    /// - The Close frame MAY contain a body that indicates a reason for closing.
+    ///
     /// ### Example
     ///
     /// ```no_run
@@ -78,7 +82,7 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
     pub async fn close(mut self, code: impl Into<u16>, reason: impl AsRef<[u8]>) -> Result<()> {
-        self.send(frame::Close {
+        self.send(message::Close {
             code: code.into(),
             reason: reason.as_ref(),
         })
@@ -184,24 +188,47 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                 }
 
                 match opcode {
+                    // 3-7 are reserved for further non-control frames.
+
                     // Close
                     8 => {
+                        // - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
+                        //   representing a status code with value /code/ defined in [Section 7.4](https://datatracker.ietf.org/doc/html/rfc6455#section-7.4). Following the 2-byte integer,
+                        //
+                        // - Close frames sent from client to server must be masked.
+                        // - The application MUST NOT send any more data frames after sending a `Close` frame.
+                        //
+                        // - If an endpoint receives a Close frame and did not previously send a
+                        //   Close frame, the endpoint MUST send a Close frame in response.  (When
+                        //   sending a Close frame in response, the endpoint typically echos the
+                        //   status code it received.)  It SHOULD do so as soon as practical.  An
+                        //   endpoint MAY delay sending a Close frame until its current message is
+                        //   sent
+                        //
+                        // - After both sending and receiving a Close message, an endpoint
+                        //   considers the WebSocket connection closed and MUST close the
+                        //   underlying TCP connection.
+
                         // Feature: Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...
                         if let Some(1000..=1003 | 1007..=1011 | 1015) = msg
                             .get(..2)
                             .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
                         {
                             let mut writer = vec![];
-                            frame::encode::<SIDE, frame::RandMask>(&mut writer, true, 8, &msg);
+                            message::encode::<SIDE>(&mut writer, true, 8, &msg);
                             let _ = self.stream.write_all(&writer).await;
                         }
                         return err(ErrorKind::NotConnected, "The connection was closed");
                     }
                     // Ping
                     9 => {
+                        // A Ping frame MAY include "Application data".
+                        // Unless it already received a Close frame.  It SHOULD respond with Pong frame as soon as is practical.
+                        //
+                        // A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
                         if let Err((code, reason)) = (self.on_event)(Event::Ping(&msg)) {
                             let _ = self
-                                .send(frame::Close {
+                                .send(message::Close {
                                     code: code as u16,
                                     reason: reason.to_string().as_bytes(),
                                 })
@@ -212,9 +239,16 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                     }
                     // Pong
                     10 => {
+                        // A Pong frame sent in response to a Ping frame must have identical
+                        // "Application data" as found in the message body of the Ping frame being replied to.
+                        //
+                        // If an endpoint receives a Ping frame and has not yet sent Pong frame(s) in response to previous Ping frame(s), the endpoint MAY
+                        // elect to send a Pong frame for only the most recently processed Ping frame.
+                        //
+                        //  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
                         if let Err((code, reason)) = (self.on_event)(Event::Pong(&msg)) {
                             let _ = self
-                                .send(frame::Close {
+                                .send(message::Close {
                                     code: code as u16,
                                     reason: reason.to_string().as_bytes(),
                                 })
@@ -222,10 +256,11 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                             return err(ErrorKind::Other, reason);
                         }
                     }
+                    // 11-15 are reserved for further control frames
                     _ => return proto_err("Unknown opcode"),
                 }
             } else {
-                // // Feature: This prevents DOS attacks, where the client intentionally sends consecutive fragment frames of size 0.
+                // Feature: client may intentionally sends consecutive fragment frames of size `0` ?
                 // if !fin && len == 0 {
                 //     return proto_err("Fragment length shouldn't be zero");
                 // }
@@ -239,6 +274,24 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
         }
     }
 
+    /// The FIN and opcode fields work together to send a message split up into separate frames. This is called message fragmentation.
+    ///
+    /// ```txt
+    /// Client: FIN=1, opcode=0x1, msg="hello"
+    /// Server: (process complete message immediately) Hi.
+    /// Client: FIN=0, opcode=0x1, msg="and a"
+    /// Server: (listening, new message containing text started)
+    /// Client: FIN=0, opcode=0x0, msg="happy new"
+    /// Server: (listening, payload concatenated to previous message)
+    /// Client: FIN=1, opcode=0x0, msg="year!"
+    /// Server: (process complete message) Happy new year to you too!
+    /// ```
+    ///
+    /// ### Note
+    ///
+    /// - Control frames MAY be injected in the middle ofa fragmented message.
+    ///   Control frames themselves MUST NOT be fragmented.
+    ///   An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
@@ -320,6 +373,7 @@ macro_rules! read_exect {
 macro_rules! default_impl_for_data {
     () => {
         impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+            /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 cls_if_err!(self.ws, {
                     if self.len() == 0 {
@@ -332,6 +386,7 @@ macro_rules! default_impl_for_data {
                 })
             }
 
+            /// Read the exact number of bytes required to fill buf.
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
                 cls_if_err!(self.ws, {
                     Ok(read_exect!(self, buf, {
@@ -343,11 +398,13 @@ macro_rules! default_impl_for_data {
                 })
             }
 
+            /// It is a wrapper around the [Self::read_to_end_with_limit] function with a default limit of `16` MB.
             #[inline]
             pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
                 self.read_to_end_with_limit(buf, 16 * 1024 * 1024).await
             }
 
+            /// Reads data until it reaches a specified limit or end of stream.
             pub async fn read_to_end_with_limit(
                 &mut self,
                 buf: &mut Vec<u8>,
@@ -408,8 +465,9 @@ macro_rules! default_impl_for_data {
                 self.ws.stream.flush().await
             }
 
+            /// send message to a endpoint by writing it to a WebSocket stream.
             #[inline]
-            pub async fn send(&mut self, data: impl Frame) -> Result<()> {
+            pub async fn send(&mut self, data: impl Message) -> Result<()> {
                 self.ws.send(data).await
             }
         }

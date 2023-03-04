@@ -1,11 +1,12 @@
 #![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 
 mod errors;
 mod mask;
+mod message;
 mod utils;
 mod ws;
 
-pub mod frame;
 pub mod handshake;
 pub mod http;
 pub use ws::*;
@@ -14,7 +15,7 @@ use errors::*;
 use mask::*;
 use utils::*;
 
-use std::{io::Result, fmt};
+use std::{fmt, io::Result};
 
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
@@ -25,15 +26,28 @@ pub const SERVER: bool = true;
 /// Used to represent `WebSocket<CLIENT>` type.
 pub const CLIENT: bool = false;
 
+/// This trait is responsible to encode websocket message.
+pub trait Message {
+    /// This trait
+    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
+}
+
+/// It represent the type of data that is being sent over the WebSocket connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DataType {
+    /// `Text` data is represented as a sequence of Unicode characters encoded using UTF-8 encoding.
     Text,
+    /// `Binary` data can be any sequence of bytes and is typically used for sending non-textual data, such as images, audio files etc...
     Binary,
 }
 
+/// Represent actions from `on_event` closure,
+///
+/// it allows to close the WebSocket connection gracefully if necessary.
 pub type EventResult =
     std::result::Result<(), (CloseCode, Box<dyn std::error::Error + Send + Sync>)>;
 
+/// Represent a websocket event, either `Ping` or `Pong`
 #[derive(Debug, Clone)]
 pub enum Event<'a> {
     /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
@@ -47,6 +61,7 @@ pub enum Event<'a> {
 }
 
 impl Event<'_> {
+    /// Returns the slice of data contained within a `Ping` or `Pong` frame.
     #[inline]
     pub fn data(&self) -> &[u8] {
         match self {
@@ -107,6 +122,7 @@ impl From<CloseCode> for u16 {
 }
 
 impl From<u16> for CloseCode {
+    #[inline]
     fn from(value: u16) -> Self {
         match value {
             1000 => CloseCode::Normal,

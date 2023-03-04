@@ -1,50 +1,46 @@
 use crate::*;
 
-pub trait Frame {
-    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
-}
-
-impl<T: Frame + ?Sized> Frame for &T {
+impl<T: Message + ?Sized> Message for &T {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
     }
 }
 
-impl<T: Frame + ?Sized> Frame for Box<T> {
+impl<T: Message + ?Sized> Message for Box<T> {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
     }
 }
 
-impl Frame for str {
+impl Message for str {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        encode::<SIDE, RandMask>(writer, true, 1, self.as_bytes());
+        encode::<SIDE>(writer, true, 1, self.as_bytes());
     }
 }
 
-impl Frame for [u8] {
+impl Message for [u8] {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        encode::<SIDE, RandMask>(writer, true, 2, self);
+        encode::<SIDE>(writer, true, 2, self);
     }
 }
 
-impl<const N: usize> Frame for [u8; N] {
+impl<const N: usize> Message for [u8; N] {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        encode::<SIDE, RandMask>(writer, true, 2, self);
+        encode::<SIDE>(writer, true, 2, self);
     }
 }
 
-impl Frame for Event<'_> {
+impl Message for Event<'_> {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         match self {
-            Event::Ping(data) => encode::<SIDE, RandMask>(writer, true, 9, data),
-            Event::Pong(data) => encode::<SIDE, RandMask>(writer, true, 10, data),
+            Event::Ping(data) => encode::<SIDE>(writer, true, 9, data),
+            Event::Pong(data) => encode::<SIDE>(writer, true, 10, data),
         }
     }
 }
@@ -53,21 +49,17 @@ pub(crate) struct Close<'a> {
     pub code: u16,
     pub reason: &'a [u8],
 }
-impl<'a> Frame for Close<'a> {
+
+impl<'a> Message for Close<'a> {
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         let mut data = Vec::with_capacity(2 + self.reason.len());
         data.extend_from_slice(&self.code.to_be_bytes());
         data.extend_from_slice(self.reason);
-        frame::encode::<SIDE, frame::RandMask>(writer, true, 8, &data);
+        message::encode::<SIDE>(writer, true, 8, &data);
     }
 }
 
-pub fn encode<const SIDE: bool, Mask: RandKey>(
-    writer: &mut Vec<u8>,
-    fin: bool,
-    opcode: u8,
-    data: &[u8],
-) {
+pub(crate) fn encode<const SIDE: bool>(writer: &mut Vec<u8>, fin: bool, opcode: u8, data: &[u8]) {
     let data_len = data.len();
     writer.reserve(if SERVER == SIDE { 10 } else { 14 } + data_len);
     unsafe {
@@ -104,7 +96,7 @@ pub fn encode<const SIDE: bool, Mask: RandKey>(
             std::ptr::copy_nonoverlapping(data.as_ptr(), start.add(len), data_len);
             len
         } else {
-            let mask = Mask::key();
+            let mask = fastrand::u32(..).to_ne_bytes();
             let [a, b, c, d] = mask;
             start.add(len).write(a);
             start.add(len + 1).write(b);
@@ -121,51 +113,16 @@ pub fn encode<const SIDE: bool, Mask: RandKey>(
     }
 }
 
-/// Default random mask generator
-pub struct RandMask;
-
-pub trait RandKey {
-    fn key() -> [u8; 4];
-}
-
-impl RandKey for RandMask {
-    #[inline]
-    fn key() -> [u8; 4] {
-        fastrand::u32(..).to_ne_bytes()
-    }
-}
-
 #[cfg(test)]
 mod encode {
     use super::*;
     const DATA: &[u8] = b"Hello";
-
-    struct DefaultMask;
-    impl super::RandKey for DefaultMask {
-        fn key() -> [u8; 4] {
-            [55, 250, 33, 61]
-        }
-    }
-
-    fn encode<const S: bool>(writer: &mut Vec<u8>, fin: bool, opcode: u8, data: &[u8]) {
-        super::encode::<S, DefaultMask>(writer, fin, opcode, data);
-    }
 
     #[test]
     fn unmasked_txt_msg() {
         let mut bytes = vec![];
         encode::<SERVER>(&mut bytes, true, 1, DATA);
         assert_eq!(bytes, [0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
-    }
-
-    #[test]
-    fn masked_txt_msg() {
-        let mut bytes = vec![];
-        encode::<CLIENT>(&mut bytes, true, 1, DATA);
-        assert_eq!(
-            bytes,
-            [0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]
-        );
     }
 
     #[test]
@@ -183,18 +140,9 @@ mod encode {
     }
 
     #[test]
-    fn unmasked_ping_req_and_masked_pong_res() {
+    fn unmasked_ping_req() {
         let mut bytes = vec![];
         encode::<SERVER>(&mut bytes, true, 9, DATA);
-        encode::<CLIENT>(&mut bytes, true, 10, DATA);
-        assert_eq!(
-            bytes,
-            [
-                // unmasked ping request
-                0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f, //
-                // masked pong response
-                0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58,
-            ]
-        );
+        assert_eq!(bytes, [0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f,]);
     }
 }
