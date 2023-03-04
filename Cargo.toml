@@ -10,13 +10,12 @@ repository = "https://github.com/nurmohammed840/websocket.rs"
 description = "WebSocket implementation for both client and server"
 
 [dependencies]
-tokio = { version = "1.25", default-features = false, features = ["io-util", "net"] }
+tokio = { version = "1", default-features = false, features = ["io-util", "net"] }
 tokio-rustls = { version = "0.23", default-features = false }
 webpki-roots = "0.22"
 
-fastrand = "1.8"
 base64 = "0.21"
 sha-1 = "0.10"
 
 [dev-dependencies]
-tokio = { version = "1.25", default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread"] }

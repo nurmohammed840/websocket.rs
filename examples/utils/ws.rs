@@ -9,7 +9,7 @@ use tokio::{
 use web_socket::{handshake, http, WebSocket, SERVER};
 
 fn handshake_response(request: &mut &[u8]) -> result::Result<String, &'static str> {
-    let record = http::Record::from_raw(request)?;
+    let record = http::Http::parse(request)?;
     let sec_ws_key = record
         .get_sec_ws_key()
         .ok_or("Unable to verify `Sec-WebSocket-Key`")

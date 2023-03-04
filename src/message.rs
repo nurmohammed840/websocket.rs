@@ -96,7 +96,7 @@ pub(crate) fn encode<const SIDE: bool>(writer: &mut Vec<u8>, fin: bool, opcode: 
             std::ptr::copy_nonoverlapping(data.as_ptr(), start.add(len), data_len);
             len
         } else {
-            let mask = fastrand::u32(..).to_ne_bytes();
+            let mask = (rand_num() as u32).to_ne_bytes();
             let [a, b, c, d] = mask;
             start.add(len).write(a);
             start.add(len + 1).write(b);

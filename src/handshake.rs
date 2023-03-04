@@ -33,7 +33,7 @@
 //! -  Request may include any other header fields, for example, cookies and/or authentication-related header fields.
 //! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
 
-use crate::http::FmtHeader;
+use crate::http::Header;
 use sha1::{Digest, Sha1};
 
 /// WebSocket magic string used during the WebSocket handshake
@@ -91,10 +91,10 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
 /// - Regular HTTP status codes can be used only before the handshake. After the handshake succeeds, you have to use a different set of codes (defined in section 7.4 of the spec)
 pub fn response(
     sec_ws_key: impl AsRef<str>,
-    headers: impl IntoIterator<Item = impl FmtHeader>,
+    headers: impl IntoIterator<Item = impl Header>,
 ) -> String {
     let key = accept_key_from(sec_ws_key.as_ref());
-    let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
+    let headers: String = headers.into_iter().map(|f| Header::fmt(&f)).collect();
     format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n{headers}\r\n")
 }
 
@@ -120,12 +120,12 @@ pub fn response(
 pub fn request(
     host: impl AsRef<str>,
     path: impl AsRef<str>,
-    headers: impl IntoIterator<Item = impl FmtHeader>,
+    headers: impl IntoIterator<Item = impl Header>,
 ) -> (String, String) {
     let host = host.as_ref();
     let path = path.as_ref().trim_start_matches('/');
-    let sec_key = base64_encode(fastrand::u128(..).to_ne_bytes());
-    let headers: String = headers.into_iter().map(|f| FmtHeader::fmt(&f)).collect();
+    let sec_key = base64_encode(crate::utils::rand_u128().to_ne_bytes());
+    let headers: String = headers.into_iter().map(|f| Header::fmt(&f)).collect();
     (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"),sec_key)
 }
 

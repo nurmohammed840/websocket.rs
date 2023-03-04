@@ -1,5 +1,5 @@
 use super::*;
-use http::FmtHeader;
+use http::Header;
 use std::{fmt::Display, sync::Arc};
 use tokio::{
     io::BufReader,
@@ -11,10 +11,14 @@ use tokio_rustls::{
     TlsConnector,
 };
 
+/// Unencrypted [WebSocket] client.
 pub type WS = WebSocket<CLIENT, BufReader<TcpStream>>;
+
+/// Encrypted [WebSocket] client.
 pub type WSS = WebSocket<CLIENT, BufReader<TlsStream<TcpStream>>>;
 
 impl WS {
+    /// establishe a websocket connection to a remote address.
     #[inline]
     pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
     where
@@ -23,10 +27,11 @@ impl WS {
         Self::connect_with_headers(addr, path, [("", ""); 0]).await
     }
 
+    /// establishes a connection with headers
     pub async fn connect_with_headers(
         addr: impl ToSocketAddrs + Display,
         path: impl AsRef<str>,
-        headers: impl IntoIterator<Item = impl FmtHeader>,
+        headers: impl IntoIterator<Item = impl Header>,
     ) -> Result<Self> {
         let host = addr.to_string();
         let mut ws = Self::from(BufReader::new(TcpStream::connect(addr).await?));
@@ -36,6 +41,7 @@ impl WS {
 }
 
 impl WSS {
+    /// establishe a secure websocket connection to a remote address.
     #[inline]
     pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
     where
@@ -44,10 +50,11 @@ impl WSS {
         Self::connect_with_headers(addr, path, [("", ""); 0]).await
     }
 
+    /// establishes a secure connection with headers
     pub async fn connect_with_headers(
         addr: impl ToSocketAddrs + Display,
         path: impl AsRef<str>,
-        headers: impl IntoIterator<Item = impl FmtHeader>,
+        headers: impl IntoIterator<Item = impl Header>,
     ) -> Result<Self> {
         let host = addr.to_string();
         // `TcpStream::connect` also validate `addr`, don't move this line.
@@ -86,7 +93,7 @@ impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
         &mut self,
         host: &str,
         path: &str,
-        headers: impl IntoIterator<Item = impl FmtHeader>,
+        headers: impl IntoIterator<Item = impl Header>,
     ) -> Result<()> {
         let (request, sec_key) = handshake::request(host, path, headers);
         self.stream.write_all(request.as_bytes()).await?;
@@ -94,7 +101,7 @@ impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
         let mut bytes = self.stream.fill_buf().await?;
         let mut amt = bytes.len();
 
-        let header = http::Record::from_raw(&mut bytes).map_err(invalid_data)?;
+        let header = http::Http::parse(&mut bytes).map_err(invalid_data)?;
         if header.schema != b"HTTP/1.1 101 Switching Protocols" {
             return proto_err("Invalid HTTP response");
         }
@@ -114,13 +121,16 @@ impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
 }
 
 impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, RW> {
+    /// reads [Data] from websocket stream.
     pub async fn recv(&mut self) -> Result<Data<RW>> {
         let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
         Ok(client::Data { ty, ws: self })
     }
 }
 
+/// It represent a single websocket message.
 pub struct Data<'a, Stream> {
+    /// A [DataType] value indicating the type of the data.
     pub ty: DataType,
     pub(crate) ws: &'a mut WebSocket<CLIENT, Stream>,
 }

@@ -1,6 +1,7 @@
 use super::*;
 
 impl<Stream> WebSocket<SERVER, Stream> {
+    /// Create a new websocket instance.
     #[inline]
     pub fn new(stream: Stream) -> Self {
         Self::from(stream)
@@ -8,6 +9,7 @@ impl<Stream> WebSocket<SERVER, Stream> {
 }
 
 impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SERVER, RW> {
+    /// reads [Data] from websocket stream.
     pub async fn recv(&mut self) -> Result<Data<RW>> {
         let (ty, mask) = cls_if_err!(self, {
             let ty = self.read_data_frame_header().await?;
@@ -18,7 +20,9 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SERVER, RW> {
     }
 }
 
+/// It represent a single websocket message.
 pub struct Data<'a, Stream> {
+    /// A [DataType] value indicating the type of the data.
     pub ty: DataType,
     pub(crate) mask: Mask,
 

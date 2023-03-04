@@ -5,39 +5,39 @@ use std::{collections::HashMap, fmt};
 /// # Example
 ///
 /// ```rust
-/// use web_socket::http::FmtHeader;
+/// use web_socket::http::Header;
 ///
-/// assert_eq!(FmtHeader::fmt(&("val", 2)), "val: 2\r\n");
-/// assert_eq!(FmtHeader::fmt(&["key", "value"]), "key: value\r\n");
+/// assert_eq!(Header::fmt(&("val", 2)), "val: 2\r\n");
+/// assert_eq!(Header::fmt(&["key", "value"]), "key: value\r\n");
 /// ```
-pub trait FmtHeader {
+pub trait Header {
     /// Format a single http header field
     fn fmt(_: &Self) -> String;
 }
 
-impl<T: FmtHeader> FmtHeader for &T {
+impl<T: Header> Header for &T {
     fn fmt(this: &Self) -> String {
         T::fmt(this)
     }
 }
-impl<T: fmt::Display> FmtHeader for [T; 2] {
+impl<T: fmt::Display> Header for [T; 2] {
     fn fmt([key, value]: &Self) -> String {
         format!("{key}: {value}\r\n")
     }
 }
-impl<K: fmt::Display, V: fmt::Display> FmtHeader for (K, V) {
+impl<K: fmt::Display, V: fmt::Display> Header for (K, V) {
     fn fmt((key, value): &Self) -> String {
         format!("{key}: {value}\r\n")
     }
 }
 
-/// Basic http header perser
+/// it represents an HTTP message with a schema and a header.
 ///
 /// ### Example
 ///
 /// ```rust
 /// let mut bytes = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n".as_bytes();
-/// let header = web_socket::http::Record::from_raw(&mut bytes).unwrap();
+/// let header = web_socket::http::Http::parse(&mut bytes).unwrap();
 ///
 /// assert_eq!(header.schema, "HTTP/1.1 101 Switching Protocols".as_bytes());
 /// assert_eq!(header.get("upgrade"), Some("websocket".as_bytes()));
@@ -47,16 +47,19 @@ impl<K: fmt::Display, V: fmt::Display> FmtHeader for (K, V) {
 /// );
 /// ```
 #[derive(Default, Clone)]
-pub struct Record<'a> {
+pub struct Http<'a> {
+    /// schema of the http message (e.g. `HTTP/1.1`)
     pub schema: &'a [u8],
-    pub header: HashMap<String, &'a [u8]>,
+    ///  key-value pairs of http headers
+    pub headers: HashMap<String, &'a [u8]>,
 }
 
 const HTTP_EOF_ERR: &str = "HTTP parse error: Unexpected end";
 
-impl<'a> Record<'a> {
+impl<'a> Http<'a> {
+    /// get http header value.
     pub fn get(&self, key: impl AsRef<str>) -> Option<&[u8]> {
-        self.header.get(key.as_ref()).copied()
+        self.headers.get(key.as_ref()).copied()
     }
 
     fn is_ws_upgrade(&self) -> Option<bool> {
@@ -65,6 +68,7 @@ impl<'a> Record<'a> {
         Some(upgrade && connection)
     }
 
+    /// get http `sec-websocket-key` header value.
     pub fn get_sec_ws_key(&self) -> Option<&[u8]> {
         let suppoted_version = self
             .get("sec-websocket-version")?
@@ -74,17 +78,19 @@ impl<'a> Record<'a> {
         (self.is_ws_upgrade()? && suppoted_version).then_some(self.get("sec-websocket-key")?)
     }
 
+    /// get http `sec-websocket-accept` header value.
     pub fn get_sec_ws_accept(&self) -> Option<&[u8]> {
         self.is_ws_upgrade()?
             .then_some(self.get("sec-websocket-accept")?)
     }
 
-    pub fn from_raw(bytes: &mut &'a [u8]) -> std::result::Result<Self, &'static str> {
+    /// parse an HTTP message from a byte slice
+    pub fn parse(bytes: &mut &'a [u8]) -> std::result::Result<Self, &'static str> {
         let schema = trim_ascii_end(split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)?);
         let mut header = HashMap::new();
         loop {
             match split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)? {
-                b"" | b"\r" => return Ok(Self { schema, header }),
+                b"" | b"\r" => return Ok(Self { schema, headers: header }),
                 line => {
                     let mut value = line;
                     let key = split_once(&mut value, b':')
@@ -101,15 +107,15 @@ impl<'a> Record<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Record<'a> {
+impl<'a> fmt::Debug for Http<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut header = vec![];
-        for (key, value) in &self.header {
+        for (key, value) in &self.headers {
             if let Ok(value) = std::str::from_utf8(value) {
                 header.push((key, value))
             }
         }
-        f.debug_struct("HttpRecord")
+        f.debug_struct("Http")
             .field("schema", &std::str::from_utf8(self.schema))
             .field("header", &header)
             .finish()
