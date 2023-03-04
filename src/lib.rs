@@ -51,7 +51,7 @@ pub enum DataType {
 ///
 /// it allows to close the WebSocket connection gracefully if necessary.
 pub type EventResult =
-    std::result::Result<(), (CloseCode, Box<dyn std::error::Error + Send + Sync>)>;
+    std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 /// Represent a websocket event, either `Ping` or `Pong`
 #[derive(Debug, Clone)]

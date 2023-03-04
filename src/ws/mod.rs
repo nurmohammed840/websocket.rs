@@ -225,13 +225,13 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         // Unless it already received a Close frame.  It SHOULD respond with Pong frame as soon as is practical.
                         //
                         // A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
-                        if let Err((code, reason)) = (self.on_event)(Event::Ping(&msg)) {
-                            let _ = self
-                                .send(message::Close {
-                                    code: code as u16,
-                                    reason: reason.to_string().as_bytes(),
-                                })
-                                .await;
+                        if let Err(reason) = (self.on_event)(Event::Ping(&msg)) {
+                            // let _ = self
+                            //     .send(message::Close {
+                            //         code: code as u16,
+                            //         reason: reason.to_string().as_bytes(),
+                            //     })
+                            //     .await;
                             return err(ErrorKind::Other, reason);
                         };
                         self.send(Event::Pong(&msg)).await?;
@@ -245,13 +245,13 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         // elect to send a Pong frame for only the most recently processed Ping frame.
                         //
                         //  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
-                        if let Err((code, reason)) = (self.on_event)(Event::Pong(&msg)) {
-                            let _ = self
-                                .send(message::Close {
-                                    code: code as u16,
-                                    reason: reason.to_string().as_bytes(),
-                                })
-                                .await;
+                        if let Err(reason) = (self.on_event)(Event::Pong(&msg)) {
+                            // let _ = self
+                            //     .send(message::Close {
+                            //         code: code as u16,
+                            //         reason: reason.to_string().as_bytes(),
+                            //     })
+                            //     .await;
                             return err(ErrorKind::Other, reason);
                         }
                     }
