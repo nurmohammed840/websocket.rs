@@ -10,7 +10,7 @@ const AGENT: &str = "agent=web-socket";
 async fn get_case_count() -> Result<u32> {
     let mut ws = WS::connect(ADDR, "/getCaseCount").await?;
     let msg = read_msg!(ws)?;
-    ws.close(CloseCode::Normal, "").await?;
+    ws.close(()).await?;
     Ok(msg.parse().unwrap())
 }
 
@@ -19,7 +19,7 @@ async fn run_test(case: u32) -> Result<()> {
     let mut ws = WS::connect(ADDR, format!("/runCase?case={case}&{AGENT}")).await?;
     match echo(&mut ws).await.err().unwrap().kind() {
         ErrorKind::NotConnected | ErrorKind::InvalidData => Ok(()),
-        _ => ws.close(CloseCode::ProtocolError, "").await,
+        _ => ws.close(CloseCode::ProtocolError).await,
     }
 }
 
@@ -44,7 +44,7 @@ async fn echo(ws: &mut WebSocket<CLIENT, tokio::io::BufReader<TcpStream>>) -> Re
 
 async fn update_reports() -> Result<()> {
     let ws = WS::connect(ADDR, format!("/updateReports?{AGENT}")).await?;
-    ws.close(CloseCode::Normal, "").await
+    ws.close(()).await
 }
 
 #[tokio::main]

@@ -24,7 +24,7 @@ async fn handle_connection(stream: TcpStream) -> Result<()> {
     let mut ws = ws::upgrade(stream).await?;
     match echo(&mut ws).await.err().unwrap().kind() {
         ErrorKind::NotConnected | ErrorKind::InvalidData => Ok(()),
-        _ => ws.close(CloseCode::ProtocolError, "").await,
+        _ => ws.close(CloseCode::ProtocolError).await,
     }
 }
 

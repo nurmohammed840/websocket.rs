@@ -81,12 +81,11 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub async fn close(mut self, code: impl Into<u16>, reason: impl AsRef<[u8]>) -> Result<()> {
-        self.send(message::Close {
-            code: code.into(),
-            reason: reason.as_ref(),
-        })
-        .await?;
+    pub async fn close(mut self, reason: impl CloseReason) -> Result<()> {
+        let mut bytes = vec![];
+        reason.encode::<SIDE>(&mut bytes);
+        self.stream.write_all(&bytes).await?;
+
         self.stream.flush().await
     }
 }

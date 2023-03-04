@@ -48,7 +48,7 @@ async fn client(uri: String) -> Result<()> {
             }
         }
     };
-    ws.close(CloseCode::Normal, msg).await
+    ws.close((CloseCode::Normal, msg)).await
 }
 
 async fn handeler(stream: TcpStream) -> Result<()> {

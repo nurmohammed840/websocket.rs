@@ -28,8 +28,14 @@ pub const CLIENT: bool = false;
 
 /// This trait is responsible to encode websocket message.
 pub trait Message {
-    /// This trait
+    /// 
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
+}
+
+/// 
+pub trait CloseReason {
+    /// 
+    fn encode<const SIDE: bool>(self, writer: &mut Vec<u8>);
 }
 
 /// It represent the type of data that is being sent over the WebSocket connection.
