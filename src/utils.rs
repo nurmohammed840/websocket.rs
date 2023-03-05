@@ -16,7 +16,7 @@ where
 {
     let bytes = stream.fill_buf().await?;
     if bytes.is_empty() {
-        return err(ErrorKind::ConnectionAborted, "The connection was aborted");
+        errors::err!(ConnectionAborted, "The connection was aborted");
     }
     let amt = bytes.len().min(len);
     cb(unsafe { bytes.get_unchecked(..amt) });
@@ -41,12 +41,13 @@ impl XorShift128Plus {
     }
 }
 
-static mut RNG: XorShift128Plus = XorShift128Plus { x: 0x_C01D, y: 0x_C0F1 };
+static mut RNG: XorShift128Plus = XorShift128Plus {
+    x: 0x_C01D,
+    y: 0x_C0F1,
+};
 
 pub fn rand_num() -> u64 {
-    unsafe {
-        RNG.next()
-    }
+    unsafe { RNG.next() }
 }
 pub fn rand_u128() -> u128 {
     unsafe {

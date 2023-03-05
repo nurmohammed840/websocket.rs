@@ -1,5 +1,5 @@
 #![allow(clippy::unusual_byte_groupings)]
-use crate::*;
+use crate::{errors::err, *};
 
 /// client specific implementation
 pub mod client;
@@ -28,9 +28,13 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub on_event: Box<dyn FnMut(Event) -> EventResult + Send + Sync>,
+    pub on_event: Box<
+        dyn FnMut(Event) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+            + Send
+            + Sync,
+    >,
 
-    /// See: [cls_if_err]
+    /// used in `cls_if_err`
     is_closed: bool,
 
     fin: bool,
@@ -38,8 +42,8 @@ pub struct WebSocket<const SIDE: bool, Stream> {
 }
 
 impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
-    /// send message to a endpoint by writing it to a WebSocket stream.
-    /// 
+    /// Send message to a endpoint by writing it to a WebSocket stream.
+    ///
     /// ### Example
     ///
     /// ```no_run
@@ -77,15 +81,16 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// # async {
     ///
     /// let ws = WS::connect("localhost:80", "/").await?;
-    /// ws.close(CloseCode::Normal, "Closed successfully").await?;
+    /// ws.close((CloseCode::Normal, "Closed successfully")).await?;
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub async fn close(mut self, reason: impl CloseReason) -> Result<()> {
-        let mut bytes = vec![];
-        reason.encode::<SIDE>(&mut bytes);
-        self.stream.write_all(&bytes).await?;
-
+    pub async fn close<T>(mut self, reason: T) -> Result<()>
+    where
+        T: CloseFrame,
+        T::Bytes: AsRef<[u8]>
+    {
+        self.stream.write_all(reason.encode::<SIDE>().as_ref()).await?;
         self.stream.flush().await
     }
 }
@@ -148,7 +153,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                 // for non-zero values.  If a nonzero value is received and none of
                 // the negotiated extensions defines the meaning of such a nonzero
                 // value, the receiving endpoint MUST _Fail the WebSocket Connection_.
-                return proto_err("Reserve bit MUST be `0`");
+                err!(CloseEvent::Error("reserve bit MUST be `0`"));
             }
 
             // A client MUST mask all frames that it sends to the server. (Note
@@ -159,20 +164,21 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
             // A server MUST NOT mask any frames that it sends to the client.
             if SERVER == SIDE {
                 if !is_masked {
-                    return proto_err("Expected masked frame");
+                    err!(CloseEvent::Error("expected masked frame"));
                 }
             } else if is_masked {
-                return proto_err("Expected unmasked frame");
+                err!(CloseEvent::Error("expected unmasked frame"));
             }
 
+            // 3-7 are reserved for further non-control frames.
             if opcode >= 8 {
                 if !fin {
-                    return proto_err("Control frame MUST NOT be fragmented");
+                    err!(CloseEvent::Error("control frame MUST NOT be fragmented"));
                 }
                 if len > 125 {
-                    return proto_err(
-                        "Control frame MUST have a payload length of 125 bytes or less",
-                    );
+                    err!(CloseEvent::Error(
+                        "control frame MUST have a payload length of 125 bytes or less"
+                    ));
                 }
 
                 let mut msg = vec![0; len];
@@ -187,8 +193,6 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                 }
 
                 match opcode {
-                    // 3-7 are reserved for further non-control frames.
-
                     // Close
                     8 => {
                         // - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
@@ -208,16 +212,20 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         //   considers the WebSocket connection closed and MUST close the
                         //   underlying TCP connection.
 
-                        // Feature: Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...
-                        if let Some(1000..=1003 | 1007..=1011 | 1015) = msg
+                        let todo = "Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...";
+                        let code = msg
                             .get(..2)
-                            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
-                        {
+                            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]));
+
+                        if let Some(1000..=1003 | 1007..=1011 | 1015) = code {
                             let mut writer = vec![];
                             message::encode::<SIDE>(&mut writer, true, 8, &msg);
                             let _ = self.stream.write_all(&writer).await;
                         }
-                        return err(ErrorKind::NotConnected, "The connection was closed");
+                        err!(CloseEvent::Close {
+                            code: code.unwrap_or(0),
+                            reason: "the connection was closed".into()
+                        });
                     }
                     // Ping
                     9 => {
@@ -226,13 +234,8 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         //
                         // A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
                         if let Err(reason) = (self.on_event)(Event::Ping(&msg)) {
-                            // let _ = self
-                            //     .send(message::Close {
-                            //         code: code as u16,
-                            //         reason: reason.to_string().as_bytes(),
-                            //     })
-                            //     .await;
-                            return err(ErrorKind::Other, reason);
+                            let _ = self.stream.write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str())).await;
+                            err!(reason);
                         };
                         self.send(Event::Pong(&msg)).await?;
                     }
@@ -246,17 +249,12 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         //
                         //  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
                         if let Err(reason) = (self.on_event)(Event::Pong(&msg)) {
-                            // let _ = self
-                            //     .send(message::Close {
-                            //         code: code as u16,
-                            //         reason: reason.to_string().as_bytes(),
-                            //     })
-                            //     .await;
-                            return err(ErrorKind::Other, reason);
+                            let _ = self.stream.write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str())).await;
+                            err!(reason);
                         }
                     }
                     // 11-15 are reserved for further control frames
-                    _ => return proto_err("Unknown opcode"),
+                    _ => err!(CloseEvent::Error("unknown opcode")),
                 }
             } else {
                 // Feature: client may intentionally sends consecutive fragment frames of size `0` ?
@@ -294,7 +292,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
-            return proto_err("Expected fragment frame");
+            err!(CloseEvent::Error("expected fragment frame"));
         }
         self.fin = fin;
         self.len = len;
@@ -327,7 +325,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
         let data_type = match opcode {
             1 => DataType::Text,
             2 => DataType::Binary,
-            _ => return proto_err("Expected data frame"),
+            _ => err!(CloseEvent::Error("expected data frame")),
         };
 
         self.fin = fin;
@@ -338,9 +336,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
 
 macro_rules! cls_if_err {
     [$ws:expr, $code:expr] => ({
-        if $ws.is_closed {
-            return err(ErrorKind::NotConnected, "Read after close");
-        }
+        if $ws.is_closed { err!(NotConnected, "read after close"); }
         match $code {
             Ok(val) => Ok(val),
             Err(err) => {
@@ -390,7 +386,7 @@ macro_rules! default_impl_for_data {
                 cls_if_err!(self.ws, {
                     Ok(read_exect!(self, buf, {
                         if self.fin() {
-                            return err(ErrorKind::UnexpectedEof, "failed to fill whole buffer");
+                            err!(UnexpectedEof, "failed to fill whole buffer");
                         }
                         self._read_next_frag().await?;
                     }))
@@ -415,7 +411,7 @@ macro_rules! default_impl_for_data {
                         let additional = self.len();
                         amt += additional;
                         if amt > limit {
-                            return err(ErrorKind::Other, "Data read limit exceeded");
+                            err!(CloseEvent::Error("data read limit exceeded"));
                         }
                         unsafe {
                             buf.reserve(additional);
@@ -425,10 +421,7 @@ macro_rules! default_impl_for_data {
                                 additional,
                             );
                             read_exect!(self, uninit, {
-                                return err(
-                                    ErrorKind::UnexpectedEof,
-                                    "failed to fill whole buffer",
-                                );
+                                err!(UnexpectedEof, "failed to fill whole buffer");
                             });
                             buf.set_len(len + additional);
                         }

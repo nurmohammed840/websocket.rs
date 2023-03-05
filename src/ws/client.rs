@@ -76,7 +76,7 @@ impl WSS {
 
         let domain = match host.rsplit_once(':').unwrap().0.try_into() {
             Ok(server_name) => server_name,
-            Err(msg) => return proto_err(msg),
+            Err(dns_name_err) => err!(dns_name_err),
         };
 
         let connector = TlsConnector::from(Arc::new(config));
@@ -101,17 +101,21 @@ impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
         let mut bytes = self.stream.fill_buf().await?;
         let mut amt = bytes.len();
 
-        let header = http::Http::parse(&mut bytes).map_err(invalid_data)?;
+        pub fn http_err(msg: &str) -> std::io::Error  {
+            std::io::Error::new(std::io::ErrorKind::Other, msg)
+        }
+
+        let header = http::Http::parse(&mut bytes).map_err(http_err)?;
         if header.schema != b"HTTP/1.1 101 Switching Protocols" {
-            return proto_err("Invalid HTTP response");
+            err!("invalid HTTP response");
         }
 
         if header
             .get_sec_ws_accept()
-            .ok_or_else(|| invalid_data("Couldn't get `Accept-Key` from response"))?
+            .ok_or_else(|| http_err("couldn't get `Accept-Key` from http response"))?
             != handshake::accept_key_from(sec_key).as_bytes()
         {
-            return proto_err("Invalid accept key");
+            err!("invalid websocket accept key");
         }
 
         amt -= bytes.len();

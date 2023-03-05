@@ -54,8 +54,6 @@ pub struct Http<'a> {
     pub headers: HashMap<String, &'a [u8]>,
 }
 
-const HTTP_EOF_ERR: &str = "HTTP parse error: Unexpected end";
-
 impl<'a> Http<'a> {
     /// get http header value.
     pub fn get(&self, key: impl AsRef<str>) -> Option<&[u8]> {
@@ -86,19 +84,26 @@ impl<'a> Http<'a> {
 
     /// parse an HTTP message from a byte slice
     pub fn parse(bytes: &mut &'a [u8]) -> std::result::Result<Self, &'static str> {
+        const HTTP_EOF_ERR: &str = "http parse error: unexpected end";
+
         let schema = trim_ascii_end(split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)?);
         let mut header = HashMap::new();
         loop {
             match split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)? {
-                b"" | b"\r" => return Ok(Self { schema, headers: header }),
+                b"" | b"\r" => {
+                    return Ok(Self {
+                        schema,
+                        headers: header,
+                    })
+                }
                 line => {
                     let mut value = line;
                     let key = split_once(&mut value, b':')
-                        .ok_or("HTTP parse error: Invalid header field")?
+                        .ok_or("http parse error: invalid header field")?
                         .to_ascii_lowercase();
 
                     header.insert(
-                        String::from_utf8(key).map_err(|_| "Invalid UTF-8 bytes")?,
+                        String::from_utf8(key).map_err(|_| "invalid utf-8 bytes")?,
                         trim_ascii_start(trim_ascii_end(value)),
                     );
                 }

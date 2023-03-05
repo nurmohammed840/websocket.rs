@@ -45,39 +45,56 @@ impl Message for Event<'_> {
     }
 }
 
-impl CloseReason for () {
-    fn encode<const SIDE: bool>(self, _: &mut Vec<u8>) {}
-}
-
-impl CloseReason for u16 {
-    fn encode<const SIDE: bool>(self, writer: &mut Vec<u8>) {
-        writer.extend_from_slice(&self.to_be_bytes())
+impl CloseFrame for () {
+    type Bytes = Vec<u8>;
+    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+        let mut bytes = Vec::new();
+        encode::<SIDE>(&mut bytes, true, 8, &[]);
+        bytes
     }
 }
 
-impl CloseReason for CloseCode {
-    fn encode<const SIDE: bool>(self, writer: &mut Vec<u8>) {
-        CloseReason::encode::<SIDE>(u16::from(self), writer)
+impl CloseFrame for u16 {
+    type Bytes = Vec<u8>;
+    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+        let mut bytes = Vec::new();
+        encode::<SIDE>(&mut bytes, true, 8, &self.to_be_bytes());
+        bytes
     }
 }
 
-impl<Code, Msg> CloseReason for (Code, Msg)
+impl CloseFrame for CloseCode {
+    type Bytes = Vec<u8>;
+
+    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+        CloseFrame::encode::<SIDE>(u16::from(self))
+    }
+}
+
+impl<Code, Msg> CloseFrame for (Code, Msg)
 where
     Code: Into<u16>,
     Msg: AsRef<[u8]>,
 {
-    fn encode<const SIDE: bool>(self, writer: &mut Vec<u8>) {
+    type Bytes = Vec<u8>;
+
+    fn encode<const SIDE: bool>(self) -> Self::Bytes {
         let (code, reason) = (self.0.into(), self.1.as_ref());
         let mut data = Vec::with_capacity(2 + reason.len());
         data.extend_from_slice(&code.to_be_bytes());
         data.extend_from_slice(reason);
-        encode::<SIDE>(writer, true, 8, &data);
+
+        let mut bytes = Vec::new();
+        encode::<SIDE>(&mut bytes, true, 8, &data);
+        bytes
     }
 }
 
-impl CloseReason for &str {
-    fn encode<const SIDE: bool>(self, writer: &mut Vec<u8>) {
-        CloseReason::encode::<SIDE>((CloseCode::Normal, self), writer)
+impl CloseFrame for &str {
+    type Bytes = Vec<u8>;
+
+    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+        CloseFrame::encode::<SIDE>((CloseCode::Normal, self))
     }
 }
 

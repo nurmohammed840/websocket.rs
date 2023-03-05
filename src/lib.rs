@@ -11,12 +11,10 @@ pub mod handshake;
 pub mod http;
 pub use ws::*;
 
-use errors::*;
 use mask::*;
 use utils::*;
 
-use std::{fmt, io::Result};
-
+use std::io::Result;
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
 };
@@ -26,16 +24,33 @@ pub const SERVER: bool = true;
 /// Used to represent `WebSocket<CLIENT>` type.
 pub const CLIENT: bool = false;
 
-/// This trait is responsible to encode websocket message.
+/// This trait is responsible for encoding websocket messages.
 pub trait Message {
-    /// 
+    /// Encode websocket data frame.
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
 }
 
-/// 
-pub trait CloseReason {
-    /// 
-    fn encode<const SIDE: bool>(self, writer: &mut Vec<u8>);
+/// This trait is responsible for encoding websocket closed frame.
+pub trait CloseFrame {
+    /// Encoded websocked close frame
+    type Bytes;
+    /// Encode websocket close frame.
+    fn encode<const SIDE: bool>(self) -> Self::Bytes;
+}
+
+/// The [CloseEvent] enum represents the possible events that can occur when a WebSocket connection is closed.
+/// It has two variants: `Error` and `Close`.
+#[derive(Debug)]
+pub enum CloseEvent {
+    /// represents the websocket error message.
+    Error(&'static str),
+    /// represents a successful close event of the WebSocket connection.
+    Close {
+        /// represents the status [CloseCode] of the close event.
+        code: u16,
+        /// represents the reason for the close event
+        reason: Box<str>,
+    },
 }
 
 /// It represent the type of data that is being sent over the WebSocket connection.
@@ -46,12 +61,6 @@ pub enum DataType {
     /// `Binary` data can be any sequence of bytes and is typically used for sending non-textual data, such as images, audio files etc...
     Binary,
 }
-
-/// Represent actions from `on_event` closure,
-///
-/// it allows to close the WebSocket connection gracefully if necessary.
-pub type EventResult =
-    std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 /// Represent a websocket event, either `Ping` or `Pong`
 #[derive(Debug, Clone)]
@@ -74,12 +83,6 @@ impl Event<'_> {
             Event::Ping(data) => data,
             Event::Pong(data) => data,
         }
-    }
-}
-
-impl fmt::Display for Event<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", std::str::from_utf8(self.data()).unwrap_or(""))
     }
 }
 

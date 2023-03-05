@@ -1,19 +1,28 @@
-use std::io::Error;
-pub use std::io::ErrorKind;
+use super::{CloseEvent, Event};
+use std::{error, fmt};
 
-type DynErr = Box<dyn std::error::Error + Send + Sync>;
+macro_rules! err {
+    [$kind: ident, $err: expr] => {
+        return Err(std::io::Error::new(std::io::ErrorKind::$kind, $err))
+    };
+    [$err: expr] => {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, $err))
+    };
+}
+pub (crate) use err;
 
-#[inline]
-pub fn err<T>(kind: ErrorKind, msg: impl Into<DynErr>) -> std::io::Result<T> {
-    Err(Error::new(kind, msg))
+impl error::Error for CloseEvent {}
+impl fmt::Display for CloseEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CloseEvent::Error(msg) => f.write_str(&msg),
+            CloseEvent::Close { reason, .. } => f.write_str(&reason),
+        }
+    }
 }
 
-#[inline]
-pub fn proto_err<T>(msg: impl Into<DynErr>) -> std::io::Result<T> {
-    err(ErrorKind::InvalidData, msg)
-}
-
-#[inline]
-pub fn invalid_data(msg: impl Into<DynErr>) -> Error {
-    Error::new(ErrorKind::InvalidData, msg)
+impl fmt::Display for Event<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", std::str::from_utf8(self.data()).unwrap_or(""))
+    }
 }
