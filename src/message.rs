@@ -46,8 +46,8 @@ impl Message for Event<'_> {
 }
 
 impl CloseFrame for () {
-    type Bytes = Vec<u8>;
-    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+    type Frame = Vec<u8>;
+    fn encode<const SIDE: bool>(self) -> Self::Frame {
         let mut bytes = Vec::new();
         encode::<SIDE>(&mut bytes, true, 8, &[]);
         bytes
@@ -55,8 +55,8 @@ impl CloseFrame for () {
 }
 
 impl CloseFrame for u16 {
-    type Bytes = Vec<u8>;
-    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+    type Frame = Vec<u8>;
+    fn encode<const SIDE: bool>(self) -> Self::Frame {
         let mut bytes = Vec::new();
         encode::<SIDE>(&mut bytes, true, 8, &self.to_be_bytes());
         bytes
@@ -64,9 +64,9 @@ impl CloseFrame for u16 {
 }
 
 impl CloseFrame for CloseCode {
-    type Bytes = Vec<u8>;
+    type Frame = Vec<u8>;
 
-    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+    fn encode<const SIDE: bool>(self) -> Self::Frame {
         CloseFrame::encode::<SIDE>(u16::from(self))
     }
 }
@@ -76,9 +76,9 @@ where
     Code: Into<u16>,
     Msg: AsRef<[u8]>,
 {
-    type Bytes = Vec<u8>;
+    type Frame = Vec<u8>;
 
-    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+    fn encode<const SIDE: bool>(self) -> Self::Frame {
         let (code, reason) = (self.0.into(), self.1.as_ref());
         let mut data = Vec::with_capacity(2 + reason.len());
         data.extend_from_slice(&code.to_be_bytes());
@@ -91,9 +91,9 @@ where
 }
 
 impl CloseFrame for &str {
-    type Bytes = Vec<u8>;
+    type Frame = Vec<u8>;
 
-    fn encode<const SIDE: bool>(self) -> Self::Bytes {
+    fn encode<const SIDE: bool>(self) -> Self::Frame {
         CloseFrame::encode::<SIDE>((CloseCode::Normal, self))
     }
 }

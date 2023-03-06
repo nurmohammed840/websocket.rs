@@ -6,7 +6,7 @@ use tokio::{
     spawn,
 };
 use utils::ws;
-use web_socket::{CloseCode, DataType, WebSocket, SERVER};
+use web_socket::{CloseCode, DataType, WebSocket, SERVER, CloseEvent};
 
 const ADDR: &str = "127.0.0.1:9002";
 
@@ -22,10 +22,15 @@ async fn main() {
 
 async fn handle_connection(stream: TcpStream) -> Result<()> {
     let mut ws = ws::upgrade(stream).await?;
-    match echo(&mut ws).await.err().unwrap().kind() {
-        ErrorKind::NotConnected | ErrorKind::InvalidData => Ok(()),
-        _ => ws.close(CloseCode::ProtocolError).await,
+    let event = echo(&mut ws).await.err().unwrap();
+    match event.into_inner().unwrap().downcast::<CloseEvent>() {
+        Ok(cls_event) => match *cls_event {
+            CloseEvent::Error(_) => ws.close(CloseCode::ProtocolError).await?,
+            CloseEvent::Close { .. } => {}
+        },
+        Err(err) => eprintln!("{err}"),
     }
+    Ok(())
 }
 
 async fn echo(ws: &mut WebSocket<SERVER, tokio::io::BufReader<TcpStream>>) -> Result<()> {

@@ -33,9 +33,9 @@ pub trait Message {
 /// This trait is responsible for encoding websocket closed frame.
 pub trait CloseFrame {
     /// Encoded websocked close frame
-    type Bytes;
+    type Frame;
     /// Encode websocket close frame.
-    fn encode<const SIDE: bool>(self) -> Self::Bytes;
+    fn encode<const SIDE: bool>(self) -> Self::Frame;
 }
 
 /// The [CloseEvent] enum represents the possible events that can occur when a WebSocket connection is closed.

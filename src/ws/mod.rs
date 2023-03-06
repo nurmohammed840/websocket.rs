@@ -88,9 +88,11 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     pub async fn close<T>(mut self, reason: T) -> Result<()>
     where
         T: CloseFrame,
-        T::Bytes: AsRef<[u8]>
+        T::Frame: AsRef<[u8]>,
     {
-        self.stream.write_all(reason.encode::<SIDE>().as_ref()).await?;
+        self.stream
+            .write_all(reason.encode::<SIDE>().as_ref())
+            .await?;
         self.stream.flush().await
     }
 }
@@ -211,21 +213,24 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         // - After both sending and receiving a Close message, an endpoint
                         //   considers the WebSocket connection closed and MUST close the
                         //   underlying TCP connection.
-
-                        let todo = "Do we really need to check invalid UTF8 (`msg`) payload ? Maybe not...";
                         let code = msg
                             .get(..2)
-                            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]));
+                            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+                            .unwrap_or(1000);
 
-                        if let Some(1000..=1003 | 1007..=1011 | 1015) = code {
+                        let mut reason = String::new().into_boxed_str();
+
+                        if let 1000..=1003 | 1007..=1011 | 1015 | 3000..=3999 | 4000..=4999 = code {
+                            match msg.get(2..).map(|data| String::from_utf8(data.to_vec())) {
+                                Some(Ok(msg)) => reason = msg.into_boxed_str(),
+                                Some(Err(_)) => err!(CloseEvent::Error("invalid utf-8 payload")),
+                                _ => {}
+                            }
                             let mut writer = vec![];
                             message::encode::<SIDE>(&mut writer, true, 8, &msg);
                             let _ = self.stream.write_all(&writer).await;
                         }
-                        err!(CloseEvent::Close {
-                            code: code.unwrap_or(0),
-                            reason: "the connection was closed".into()
-                        });
+                        err!(CloseEvent::Close { code, reason });
                     }
                     // Ping
                     9 => {
@@ -234,7 +239,10 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         //
                         // A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
                         if let Err(reason) = (self.on_event)(Event::Ping(&msg)) {
-                            let _ = self.stream.write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str())).await;
+                            let _ = self
+                                .stream
+                                .write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str()))
+                                .await;
                             err!(reason);
                         };
                         self.send(Event::Pong(&msg)).await?;
@@ -249,7 +257,10 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                         //
                         //  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
                         if let Err(reason) = (self.on_event)(Event::Pong(&msg)) {
-                            let _ = self.stream.write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str())).await;
+                            let _ = self
+                                .stream
+                                .write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str()))
+                                .await;
                             err!(reason);
                         }
                     }

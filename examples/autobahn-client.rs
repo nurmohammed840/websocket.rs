@@ -2,7 +2,7 @@ mod utils;
 
 use std::io::{Error, ErrorKind, Result};
 use tokio::net::TcpStream;
-use web_socket::{client::WS, CloseCode, DataType, WebSocket, CLIENT};
+use web_socket::{client::WS, CloseCode, CloseEvent, DataType, WebSocket, CLIENT};
 
 const ADDR: &str = "localhost:9001";
 const AGENT: &str = "agent=web-socket";
@@ -15,12 +15,17 @@ async fn get_case_count() -> Result<u32> {
 }
 
 async fn run_test(case: u32) -> Result<()> {
-    // println!("Running test case {case}");
     let mut ws = WS::connect(ADDR, format!("/runCase?case={case}&{AGENT}")).await?;
-    match echo(&mut ws).await.err().unwrap().kind() {
-        ErrorKind::NotConnected | ErrorKind::InvalidData => Ok(()),
-        _ => ws.close(CloseCode::ProtocolError).await,
+
+    let event = echo(&mut ws).await.err().unwrap();
+    match event.into_inner().unwrap().downcast::<CloseEvent>() {
+        Ok(cls_event) => match *cls_event {
+            CloseEvent::Error(_) => ws.close(CloseCode::ProtocolError).await?,
+            CloseEvent::Close { .. } => {}
+        },
+        Err(err) => eprintln!("{err}"),
     }
+    Ok(())
 }
 
 async fn echo(ws: &mut WebSocket<CLIENT, tokio::io::BufReader<TcpStream>>) -> Result<()> {
