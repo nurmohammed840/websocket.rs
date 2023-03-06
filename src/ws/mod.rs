@@ -400,18 +400,19 @@ macro_rules! default_impl_for_data {
             #[inline]
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
                 cls_if_err!(self.ws, {
-                    Ok(read_exect!(self, buf, {
+                    read_exect!(self, buf, {
                         if self.fin() {
                             err!(UnexpectedEof, "failed to fill whole buffer");
                         }
                         self._read_next_frag().await?;
-                    }))
+                    });
+                    Ok(())
                 })
             }
 
             /// It is a wrapper around the [Self::read_to_end_with_limit] function with a default limit of `16` MB.
             #[inline]
-            pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+            pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<()> {
                 self.read_to_end_with_limit(buf, 16 * 1024 * 1024).await
             }
 
@@ -420,7 +421,7 @@ macro_rules! default_impl_for_data {
                 &mut self,
                 buf: &mut Vec<u8>,
                 limit: usize,
-            ) -> Result<usize> {
+            ) -> Result<()> {
                 cls_if_err!(self.ws, {
                     let mut amt = 0;
                     loop {
@@ -443,7 +444,7 @@ macro_rules! default_impl_for_data {
                         }
                         debug_assert!(self.len() == 0);
                         if self.fin() {
-                            break Ok(amt);
+                            break Ok(());
                         }
                         self._read_next_frag().await?;
                     }
