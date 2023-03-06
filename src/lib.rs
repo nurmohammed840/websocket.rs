@@ -7,7 +7,9 @@ mod message;
 mod utils;
 mod ws;
 
+#[cfg(feature = "http")]
 pub mod handshake;
+#[cfg(feature = "http")]
 pub mod http;
 pub use ws::*;
 

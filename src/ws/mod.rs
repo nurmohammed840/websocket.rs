@@ -1,8 +1,11 @@
 #![allow(clippy::unusual_byte_groupings)]
 use crate::{errors::err, *};
 
+#[cfg(any(feature = "client"))]
 /// client specific implementation
 pub mod client;
+
+#[cfg(feature = "server")]
 /// server specific implementation
 pub mod server;
 
