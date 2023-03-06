@@ -23,7 +23,7 @@ async fn run_test(case: u32) -> Result<()> {
             CloseEvent::Error(_) => ws.close(CloseCode::ProtocolError).await?,
             CloseEvent::Close { .. } => {}
         },
-        Err(_err) => {},
+        Err(_err) => {}
     }
     Ok(())
 }

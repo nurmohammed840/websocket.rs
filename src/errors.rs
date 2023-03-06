@@ -9,7 +9,7 @@ macro_rules! err {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, $err))
     };
 }
-pub (crate) use err;
+pub(crate) use err;
 
 impl error::Error for CloseEvent {}
 impl fmt::Display for CloseEvent {

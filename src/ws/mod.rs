@@ -61,6 +61,7 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
+    #[inline]
     pub async fn send(&mut self, msg: impl Message) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
@@ -244,6 +245,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                                 .stream
                                 .write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str()))
                                 .await;
+
                             err!(reason);
                         };
                         self.send(Event::Pong(&msg)).await?;
@@ -262,6 +264,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
                                 .stream
                                 .write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str()))
                                 .await;
+
                             err!(reason);
                         }
                     }
@@ -301,6 +304,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
     /// - Control frames MAY be injected in the middle ofa fragmented message.
     ///   Control frames themselves MUST NOT be fragmented.
     ///   An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
+    #[inline]
     async fn read_fragmented_header(&mut self) -> Result<()> {
         let (fin, opcode, len) = self.header().await?;
         if opcode != 0 {
@@ -311,6 +315,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
         Ok(())
     }
 
+    #[inline]
     async fn discard_old_data(&mut self) -> Result<()> {
         loop {
             if self.len > 0 {
@@ -330,6 +335,7 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
         }
     }
 
+    #[inline]
     async fn read_data_frame_header(&mut self) -> Result<DataType> {
         self.discard_old_data().await?;
 
@@ -367,11 +373,7 @@ macro_rules! read_exect {
                     true => break,
                     false => $code,
                 },
-                amt => {
-                    $buf = &mut $buf[amt..];
-                    // Let assume `self._read(..)` is expensive, So if the `buf` is empty do nothing.
-                    if $buf.is_empty() { break }
-                },
+                amt => $buf = &mut $buf[amt..],
             }
         }
     };
@@ -381,6 +383,7 @@ macro_rules! default_impl_for_data {
     () => {
         impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
             /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
+            #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 cls_if_err!(self.ws, {
                     if self.len() == 0 {
@@ -394,6 +397,7 @@ macro_rules! default_impl_for_data {
             }
 
             /// Read the exact number of bytes required to fill buf.
+            #[inline]
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
                 cls_if_err!(self.ws, {
                     Ok(read_exect!(self, buf, {

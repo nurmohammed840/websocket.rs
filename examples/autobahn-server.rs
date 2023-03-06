@@ -6,7 +6,7 @@ use tokio::{
     spawn,
 };
 use utils::ws;
-use web_socket::{CloseCode, DataType, WebSocket, SERVER, CloseEvent};
+use web_socket::{CloseCode, CloseEvent, DataType, WebSocket, SERVER};
 
 const ADDR: &str = "127.0.0.1:9002";
 
@@ -28,7 +28,7 @@ async fn handle_connection(stream: TcpStream) -> Result<()> {
             CloseEvent::Error(_) => ws.close(CloseCode::ProtocolError).await?,
             CloseEvent::Close { .. } => {}
         },
-        Err(_err) => {},
+        Err(_err) => {}
     }
     Ok(())
 }

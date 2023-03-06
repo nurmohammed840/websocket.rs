@@ -10,6 +10,7 @@ impl<Stream> WebSocket<SERVER, Stream> {
 
 impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SERVER, RW> {
     /// reads [Data] from websocket stream.
+    #[inline]
     pub async fn recv(&mut self) -> Result<Data<RW>> {
         let (ty, mask) = cls_if_err!(self, {
             let ty = self.read_data_frame_header().await?;
@@ -30,12 +31,14 @@ pub struct Data<'a, Stream> {
 }
 
 impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+    #[inline]
     async fn _read_next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await?;
         self.mask = Mask::from(read_buf(&mut self.ws.stream).await?);
         Ok(())
     }
 
+    #[inline]
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = buf.len().min(self.ws.len);
         if len > 0 {
