@@ -28,7 +28,7 @@ async fn handle_connection(stream: TcpStream) -> Result<()> {
             CloseEvent::Error(_) => ws.close(CloseCode::ProtocolError).await?,
             CloseEvent::Close { .. } => {}
         },
-        Err(err) => eprintln!("{err}"),
+        Err(_err) => {},
     }
     Ok(())
 }
