@@ -45,6 +45,7 @@ pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 /// use web_socket::handshake::accept_key_from;
 /// assert_eq!(accept_key_from("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 /// ```
+#[inline]
 pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
     let mut sha1 = Sha1::new();
     sha1.update(sec_ws_key.as_ref());

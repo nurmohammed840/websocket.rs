@@ -34,7 +34,7 @@ pub trait Message {
 
 /// This trait is responsible for encoding websocket closed frame.
 pub trait CloseFrame {
-    /// Encoded websocked close frame
+    /// Serialized close frame
     type Frame;
     /// Encode websocket close frame.
     fn encode<const SIDE: bool>(self) -> Self::Frame;
@@ -80,7 +80,7 @@ pub enum Event<'a> {
 impl Event<'_> {
     /// Returns the slice of data contained within a `Ping` or `Pong` frame.
     #[inline]
-    pub fn data(&self) -> &[u8] {
+    pub const fn data(&self) -> &[u8] {
         match self {
             Event::Ping(data) => data,
             Event::Pong(data) => data,

@@ -19,7 +19,6 @@ pub type WSS = WebSocket<CLIENT, BufReader<TlsStream<TcpStream>>>;
 
 impl WS {
     /// establishe a websocket connection to a remote address.
-    #[inline]
     pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
     where
         A: ToSocketAddrs + Display,
@@ -42,7 +41,6 @@ impl WS {
 
 impl WSS {
     /// establishe a secure websocket connection to a remote address.
-    #[inline]
     pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
     where
         A: ToSocketAddrs + Display,
@@ -89,25 +87,24 @@ impl WSS {
 }
 
 impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
-    async fn handshake(
-        &mut self,
-        host: &str,
-        path: &str,
-        headers: impl IntoIterator<Item = impl Header>,
-    ) -> Result<()> {
+    async fn handshake<I, H>(&mut self, host: &str, path: &str, headers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = H>,
+        H: Header,
+    {
         let (request, sec_key) = handshake::request(host, path, headers);
         self.stream.write_all(request.as_bytes()).await?;
 
         let mut bytes = self.stream.fill_buf().await?;
         let mut amt = bytes.len();
 
-        pub fn http_err(msg: &str) -> std::io::Error  {
+        pub fn http_err(msg: &str) -> std::io::Error {
             std::io::Error::new(std::io::ErrorKind::Other, msg)
         }
 
         let header = http::Http::parse(&mut bytes).map_err(http_err)?;
         if header.schema != b"HTTP/1.1 101 Switching Protocols" {
-            err!("invalid HTTP response");
+            err!("invalid http response");
         }
 
         if header

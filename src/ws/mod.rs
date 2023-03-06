@@ -9,6 +9,8 @@ pub mod client;
 /// server specific implementation
 pub mod server;
 
+type EventAction = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
 /// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool, Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
@@ -31,11 +33,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub on_event: Box<
-        dyn FnMut(Event) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-            + Send
-            + Sync,
-    >,
+    pub on_event: Box<dyn FnMut(Event) -> EventAction + Send + Sync>,
 
     /// used in `cls_if_err`
     is_closed: bool,

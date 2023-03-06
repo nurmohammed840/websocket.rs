@@ -1,5 +1,6 @@
 use super::*;
 
+#[inline]
 pub async fn read_buf<const N: usize, R>(stream: &mut R) -> Result<[u8; N]>
 where
     R: Unpin + AsyncRead,

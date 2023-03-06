@@ -90,7 +90,7 @@ async fn client(uri: String) -> Result<()> {
     let msg = loop {
         buf.clear();
         stdin.read_line(&mut buf)?;
-        let (cmd, msg) = buf.split_once(":").unwrap_or(("help", ""));
+        let (cmd, msg) = buf.split_once(':').unwrap_or(("help", ""));
         let msg = msg.trim();
         match cmd {
             "text" | "send" => {
@@ -121,7 +121,7 @@ fn main() {
     match args.nth(1).as_deref() {
         Some("server" | "-s") => {
             let host = args.next().unwrap_or("0.0.0.0".into());
-            let port = host.contains(":").then_some("").unwrap_or(":80");
+            let port = if host.contains(':') { "" } else { ":80" };
             utils::block_on(server(format!("{host}{port}"))).unwrap();
         }
         Some("client" | "-c") => {

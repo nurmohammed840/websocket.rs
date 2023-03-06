@@ -46,11 +46,13 @@ impl Message for Event<'_> {
 }
 
 impl CloseFrame for () {
-    type Frame = Vec<u8>;
+    type Frame = Box<[u8]>;
     fn encode<const SIDE: bool>(self) -> Self::Frame {
-        let mut bytes = Vec::new();
-        encode::<SIDE>(&mut bytes, true, 8, &[]);
-        bytes
+        if SIDE == SERVER {
+            Box::new([136, 0])
+        } else {
+            Box::new([136, 128, 0, 0, 0, 0])
+        }
     }
 }
 
@@ -92,7 +94,6 @@ where
 
 impl CloseFrame for &str {
     type Frame = Vec<u8>;
-
     fn encode<const SIDE: bool>(self) -> Self::Frame {
         CloseFrame::encode::<SIDE>((CloseCode::Normal, self))
     }

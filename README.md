@@ -14,7 +14,7 @@ Or add this to your `Cargo.toml` file.
 
 ```toml
 [dependencies]
-web-socket = "0.2"
+web-socket = "0.3"
 ```
 
 ### Ping-Pong Example
@@ -52,17 +52,7 @@ async fn example() -> Result<()> {
 
 For more examples, see [./examples](https://github.com/nurmohammed840/websocket.rs/tree/master/examples) directory.
 
-### Feature
-
-- [x]  Support async API.
-- [x]  Support [backpressure](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API/Concepts#backpressure)
-- [x]  Support fragmented messages.
-- [x]  Allow sending control frame.
-- [x]  Client support wss connection over TLS
-- [ ]  Support sync API (TODO)
-
-
-It passed the Autobahn WebSocket protocol [testsuite](https://github.com/crossbario/autobahn-testsuite)
+It passed every test of the [autobahn testsuite](https://github.com/crossbario/autobahn-testsuite)
 
 #### License
 

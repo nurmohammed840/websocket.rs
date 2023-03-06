@@ -48,7 +48,7 @@ impl<K: fmt::Display, V: fmt::Display> Header for (K, V) {
 /// ```
 #[derive(Default, Clone)]
 pub struct Http<'a> {
-    /// schema of the http message (e.g. `HTTP/1.1`)
+    /// schema of the http message (e.g. `HTTP/1.1 101 Switching Protocols`)
     pub schema: &'a [u8],
     ///  key-value pairs of http headers
     pub headers: HashMap<String, &'a [u8]>,
@@ -136,7 +136,7 @@ fn split_once<'a>(reader: &mut &'a [u8], ascii: u8) -> Option<&'a [u8]> {
     Some(val)
 }
 
-fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
+const fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
     while let [first, rest @ ..] = bytes {
         if first.is_ascii_whitespace() {
             bytes = rest;
@@ -147,7 +147,7 @@ fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
     bytes
 }
 
-fn trim_ascii_end(mut bytes: &[u8]) -> &[u8] {
+const fn trim_ascii_end(mut bytes: &[u8]) -> &[u8] {
     while let [rest @ .., last] = bytes {
         if last.is_ascii_whitespace() {
             bytes = rest;

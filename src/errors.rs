@@ -13,15 +13,17 @@ pub (crate) use err;
 
 impl error::Error for CloseEvent {}
 impl fmt::Display for CloseEvent {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CloseEvent::Error(msg) => f.write_str(&msg),
-            CloseEvent::Close { reason, .. } => f.write_str(&reason),
+            CloseEvent::Error(msg) => f.write_str(msg),
+            CloseEvent::Close { reason, .. } => f.write_str(reason),
         }
     }
 }
 
 impl fmt::Display for Event<'_> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", std::str::from_utf8(self.data()).unwrap_or(""))
     }
