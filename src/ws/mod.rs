@@ -114,7 +114,7 @@ impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
     }
 }
 
-impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW> {
+impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
     /// ### WebSocket Frame Header
     ///
     /// ```txt
@@ -319,9 +319,15 @@ impl<const SIDE: bool, RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SIDE, RW
     async fn discard_old_data(&mut self) -> Result<()> {
         loop {
             if self.len > 0 {
-                let amt = read_bytes(&mut self.stream, self.len, |_| {}).await?;
-                debug_assert!(amt != 0);
-                self.len -= amt;
+                unsafe {
+                    let mut discard = Vec::<u8>::with_capacity(self.len);
+                    let uninit = std::slice::from_raw_parts_mut(discard.as_mut_ptr(), self.len);
+                    let amt = self.stream.read(uninit).await?;
+                    if amt == 0 {
+                        err!(ConnectionAborted, "The connection was aborted");
+                    }
+                    self.len -= amt;
+                }
                 continue;
             }
             if self.fin {
@@ -381,7 +387,7 @@ macro_rules! read_exect {
 
 macro_rules! default_impl_for_data {
     () => {
-        impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+        impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
             /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
             #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -453,7 +459,7 @@ macro_rules! default_impl_for_data {
         }
 
         // Re-export
-        impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+        impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
             /// Length of the "Payload data" in bytes.
             #[inline]
             #[allow(clippy::len_without_is_empty)]

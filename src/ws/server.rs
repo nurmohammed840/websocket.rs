@@ -8,10 +8,10 @@ impl<Stream> WebSocket<SERVER, Stream> {
     }
 }
 
-impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<SERVER, RW> {
+impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SERVER, IO> {
     /// reads [Data] from websocket stream.
     #[inline]
-    pub async fn recv(&mut self) -> Result<Data<RW>> {
+    pub async fn recv(&mut self) -> Result<Data<IO>> {
         let (ty, mask) = cls_if_err!(self, {
             let ty = self.read_data_frame_header().await?;
             let mask = Mask::from(read_buf(&mut self.stream).await?);
@@ -30,7 +30,7 @@ pub struct Data<'a, Stream> {
     pub(crate) ws: &'a mut WebSocket<SERVER, Stream>,
 }
 
-impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
     #[inline]
     async fn _read_next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await?;
@@ -42,14 +42,17 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = buf.len().min(self.ws.len);
         if len > 0 {
-            len = read_bytes(&mut self.ws.stream, len, |bytes| {
-                bytes
-                    .iter()
-                    .zip(&mut self.mask)
-                    .zip(buf.iter_mut())
-                    .for_each(|((byte, key), dist)| *dist = byte ^ key);
-            })
-            .await?;
+            let mut bytes = Vec::<u8>::with_capacity(len);
+            unsafe {
+                let uninit = std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), len);
+                len = self.ws.stream.read(uninit).await?;
+            }
+            bytes[..len]
+                .iter()
+                .zip(&mut self.mask)
+                .zip(buf.iter_mut())
+                .for_each(|((byte, key), dist)| *dist = byte ^ key);
+
             self.ws.len -= len;
         }
         Ok(len)

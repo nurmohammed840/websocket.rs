@@ -10,22 +10,6 @@ where
     Ok(buf)
 }
 
-#[inline]
-/** Don't call this function, When argument `len` is `0` */
-pub async fn read_bytes<R>(stream: &mut R, len: usize, cb: impl FnOnce(&[u8])) -> Result<usize>
-where
-    R: Unpin + AsyncBufRead,
-{
-    let bytes = stream.fill_buf().await?;
-    if bytes.is_empty() {
-        errors::err!(ConnectionAborted, "The connection was aborted");
-    }
-    let amt = bytes.len().min(len);
-    cb(unsafe { bytes.get_unchecked(..amt) });
-    stream.consume(amt);
-    Ok(amt)
-}
-
 // -------------------------------------------------------
 
 struct XorShift128Plus {

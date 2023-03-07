@@ -17,9 +17,7 @@ use mask::*;
 use utils::*;
 
 use std::io::Result;
-use tokio::io::{
-    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Used to represent `WebSocket<SERVER>` type.
 pub const SERVER: bool = true;

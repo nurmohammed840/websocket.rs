@@ -33,9 +33,9 @@ impl WS {
         headers: impl IntoIterator<Item = impl Header>,
     ) -> Result<Self> {
         let host = addr.to_string();
-        let mut ws = Self::from(BufReader::new(TcpStream::connect(addr).await?));
-        ws.handshake(&host, path.as_ref(), headers).await?;
-        Ok(ws)
+        let mut stream = BufReader::new(TcpStream::connect(addr).await?);
+        handshake(&mut stream, &host, path.as_ref(), headers).await?;
+        Ok(Self::from(stream))
     }
 }
 
@@ -78,53 +78,85 @@ impl WSS {
         };
 
         let connector = TlsConnector::from(Arc::new(config));
-        let stream = BufReader::new(connector.connect(domain, tcp_stream).await?);
-        let mut wss = Self::from(stream);
-
-        wss.handshake(&host, path.as_ref(), headers).await?;
-        Ok(wss)
+        let mut stream = BufReader::new(connector.connect(domain, tcp_stream).await?);
+        handshake(&mut stream, &host, path.as_ref(), headers).await?;
+        Ok(Self::from(stream))
     }
 }
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
-impl<IO: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, IO> {
-    async fn handshake<I, H>(&mut self, host: &str, path: &str, headers: I) -> Result<()>
-    where
-        I: IntoIterator<Item = H>,
-        H: Header,
+async fn handshake<IO, I, H>(stream: &mut IO, host: &str, path: &str, headers: I) -> Result<()>
+where
+    IO: Unpin + AsyncBufRead + AsyncWrite,
+    I: IntoIterator<Item = H>,
+    H: Header,
+{
+    let (request, sec_key) = handshake::request(host, path, headers);
+    stream.write_all(request.as_bytes()).await?;
+
+    let mut bytes = stream.fill_buf().await?;
+    let mut amt = bytes.len();
+
+    pub fn http_err(msg: &str) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, msg)
+    }
+
+    let header = http::Http::parse(&mut bytes).map_err(http_err)?;
+    if header.schema != b"HTTP/1.1 101 Switching Protocols" {
+        err!("invalid http response");
+    }
+
+    if header
+        .get_sec_ws_accept()
+        .ok_or_else(|| http_err("couldn't get `Accept-Key` from http response"))?
+        != handshake::accept_key_from(sec_key).as_bytes()
     {
-        let (request, sec_key) = handshake::request(host, path, headers);
-        self.stream.write_all(request.as_bytes()).await?;
-
-        let mut bytes = self.stream.fill_buf().await?;
-        let mut amt = bytes.len();
-
-        pub fn http_err(msg: &str) -> std::io::Error {
-            std::io::Error::new(std::io::ErrorKind::Other, msg)
-        }
-
-        let header = http::Http::parse(&mut bytes).map_err(http_err)?;
-        if header.schema != b"HTTP/1.1 101 Switching Protocols" {
-            err!("invalid http response");
-        }
-
-        if header
-            .get_sec_ws_accept()
-            .ok_or_else(|| http_err("couldn't get `Accept-Key` from http response"))?
-            != handshake::accept_key_from(sec_key).as_bytes()
-        {
-            err!("invalid websocket accept key");
-        }
-
-        amt -= bytes.len();
-        self.stream.consume(amt);
-        Ok(())
+        err!("invalid websocket accept key");
     }
+    amt -= bytes.len();
+    stream.consume(amt);
+    Ok(())
 }
 
-impl<RW: Unpin + AsyncBufRead + AsyncWrite> WebSocket<CLIENT, RW> {
+// impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<CLIENT, IO> {
+//     async fn handshake<I, H>(&mut self, host: &str, path: &str, headers: I) -> Result<()>
+//     where
+//         I: IntoIterator<Item = H>,
+//         H: Header,
+//     {
+//         let (request, sec_key) = handshake::request(host, path, headers);
+//         self.stream.write_all(request.as_bytes()).await?;
+
+//         let mut bytes = self.stream.fill_buf().await?;
+//         let mut amt = bytes.len();
+
+//         pub fn http_err(msg: &str) -> std::io::Error {
+//             std::io::Error::new(std::io::ErrorKind::Other, msg)
+//         }
+
+//         let header = http::Http::parse(&mut bytes).map_err(http_err)?;
+//         if header.schema != b"HTTP/1.1 101 Switching Protocols" {
+//             err!("invalid http response");
+//         }
+
+//         if header
+//             .get_sec_ws_accept()
+//             .ok_or_else(|| http_err("couldn't get `Accept-Key` from http response"))?
+//             != handshake::accept_key_from(sec_key).as_bytes()
+//         {
+//             err!("invalid websocket accept key");
+//         }
+
+//         amt -= bytes.len();
+//         self.stream.consume(amt);
+//         Ok(())
+//     }
+// }
+
+impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<CLIENT, IO> {
     /// reads [Data] from websocket stream.
     #[inline]
-    pub async fn recv(&mut self) -> Result<Data<RW>> {
+    pub async fn recv(&mut self) -> Result<Data<IO>> {
         let ty = cls_if_err!(self, self.read_data_frame_header().await)?;
         Ok(client::Data { ty, ws: self })
     }
@@ -137,7 +169,7 @@ pub struct Data<'a, Stream> {
     pub(crate) ws: &'a mut WebSocket<CLIENT, Stream>,
 }
 
-impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
+impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
     #[inline]
     async fn _read_next_frag(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await
@@ -147,10 +179,7 @@ impl<RW: Unpin + AsyncBufRead + AsyncWrite> Data<'_, RW> {
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = buf.len().min(self.ws.len);
         if len > 0 {
-            len = read_bytes(&mut self.ws.stream, len, |bytes| unsafe {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
-            })
-            .await?;
+            len = self.ws.stream.read(&mut buf[..len]).await?;
             self.ws.len -= len;
         }
         Ok(len)
