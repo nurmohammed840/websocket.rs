@@ -1,6 +1,7 @@
 # Web-Socket
 
-This library provide WebSocket implementation for both client and server.
+This library provide [WebSocket](https://en.wikipedia.org/wiki/WebSocket) implementation for both client and server. It provides a simple, modern and 
+intuitive WebSocket interface.
 
 ## Usage
 
@@ -14,7 +15,7 @@ Or add this to your `Cargo.toml` file.
 
 ```toml
 [dependencies]
-web-socket = "0.3"
+web-socket = "0.4"
 ```
 
 ### Ping-Pong Example
