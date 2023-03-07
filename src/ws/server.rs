@@ -13,7 +13,7 @@ impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SERVER, IO> {
     #[inline]
     pub async fn recv(&mut self) -> Result<Data<IO>> {
         let (ty, mask) = cls_if_err!(self, {
-            let ty = self.read_data_frame_header().await?;
+            let ty = self._recv().await?;
             let mask = Mask::from(read_buf(&mut self.stream).await?);
             Result::<_>::Ok((ty, mask))
         })?;
@@ -32,7 +32,7 @@ pub struct Data<'a, Stream> {
 
 impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
     #[inline]
-    async fn _read_next_frag(&mut self) -> Result<()> {
+    async fn _read_fragmented_header(&mut self) -> Result<()> {
         self.ws.read_fragmented_header().await?;
         self.mask = Mask::from(read_buf(&mut self.ws.stream).await?);
         Ok(())

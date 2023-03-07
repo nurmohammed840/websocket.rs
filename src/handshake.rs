@@ -39,6 +39,8 @@ use sha1::{Digest, Sha1};
 /// WebSocket magic string used during the WebSocket handshake
 pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+/// Create `Sec-WebSocket-Accept` key from `Sec-WebSocket-Key` http header value.
+/// 
 /// ### Example
 ///
 /// ```rust
@@ -99,6 +101,8 @@ pub fn response(
     format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n{headers}\r\n")
 }
 
+/// Create websocket handshake request
+///
 /// ### Example
 ///
 /// ```no_run

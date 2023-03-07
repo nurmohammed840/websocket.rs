@@ -1,7 +1,7 @@
 #![allow(clippy::unusual_byte_groupings)]
 use crate::{errors::err, *};
 
-#[cfg(any(feature = "client"))]
+#[cfg(feature = "client")]
 /// client specific implementation
 pub mod client;
 
@@ -342,7 +342,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
     }
 
     #[inline]
-    async fn read_data_frame_header(&mut self) -> Result<DataType> {
+    async fn _recv(&mut self) -> Result<DataType> {
         self.discard_old_data().await?;
 
         let (fin, opcode, len) = self.header().await?;
@@ -351,7 +351,6 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
             2 => DataType::Binary,
             _ => err!(CloseEvent::Error("expected data frame")),
         };
-
         self.fin = fin;
         self.len = len;
         Ok(data_type)
@@ -384,7 +383,6 @@ macro_rules! read_exect {
         }
     };
 }
-
 macro_rules! default_impl_for_data {
     () => {
         impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
@@ -396,7 +394,7 @@ macro_rules! default_impl_for_data {
                         if self.ws.fin {
                             return Ok(0);
                         }
-                        self._read_next_frag().await?;
+                        self._read_fragmented_header().await?;
                     }
                     self._read(buf).await
                 })
@@ -410,7 +408,7 @@ macro_rules! default_impl_for_data {
                         if self.fin() {
                             err!(UnexpectedEof, "failed to fill whole buffer");
                         }
-                        self._read_next_frag().await?;
+                        self._read_fragmented_header().await?;
                     });
                     Ok(())
                 })
@@ -452,7 +450,7 @@ macro_rules! default_impl_for_data {
                         if self.fin() {
                             break Ok(());
                         }
-                        self._read_next_frag().await?;
+                        self._read_fragmented_header().await?;
                     }
                 })
             }
