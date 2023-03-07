@@ -30,9 +30,7 @@ async fn example() -> Result<()> {
     let mut ws = WSS::connect("ws.ifelse.io:443", "/").await?;
 
     ws.on_event = Box::new(|ev| {
-        if let Event::Pong(_) = ev {
-            println!("Pong: {}", ev.to_string());
-        }
+        println!("Pong: {ev}");
         Ok(())
     });
 
