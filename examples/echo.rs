@@ -4,12 +4,12 @@
 mod utils;
 use utils::ws;
 
-use std::io::{ErrorKind, Result};
+use std::io::Result;
 use tokio::{
     net::{TcpListener, TcpStream},
     spawn,
 };
-use web_socket::{client::WS, CloseCode, DataType, Event};
+use web_socket::{client::WS, CloseCode, CloseEvent, DataType, Event};
 
 const HELP: &str = r#"
 USAGE:
@@ -22,7 +22,8 @@ Example:
 "#;
 
 const USAGE: &str = r#"
-_____________________________________________________
+______________________________________________________
+|                                                    |
 | USAGE: <COMMAND>: <data>                           |
 |                                                    |
 | COMMAND:                                           |
@@ -39,9 +40,14 @@ async fn server(addr: String) -> Result<()> {
         let (stream, addr) = listener.accept().await?;
         spawn(async move {
             let ev = handeler(stream).await.err().unwrap();
-            match ev.kind() {
-                ErrorKind::NotConnected => println!("Peer {addr} closed successfully."),
-                _ => println!("Disconnecting peer {addr}, Cause: {ev:#?}"),
+            match ev.into_inner().unwrap().downcast::<CloseEvent>() {
+                Ok(cls_event) => match *cls_event {
+                    CloseEvent::Error(err) => {
+                        println!("Disconnecting peer {addr}, Cause: {err:#?}")
+                    }
+                    CloseEvent::Close { .. } => println!("Peer {addr} closed successfully."),
+                },
+                Err(io_err) => println!("Error: {io_err:#?}"),
             }
         });
     }
