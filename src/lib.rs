@@ -1,3 +1,4 @@
+#![doc(html_logo_url = "https://cdn.worldvectorlogo.com/logos/websocket.svg")]
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
@@ -11,7 +12,7 @@ mod ws;
 pub mod handshake;
 #[cfg(feature = "http")]
 pub mod http;
-pub use ws::*;
+pub use ws::{client, server, WebSocket};
 
 use mask::*;
 use utils::*;
