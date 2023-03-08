@@ -44,7 +44,7 @@ impl<K: fmt::Display, V: fmt::Display> Header for (K, V) {
 /// assert_eq!(header.schema, "HTTP/1.1 101 Switching Protocols".as_bytes());
 /// assert_eq!(header.get("upgrade"), Some("websocket".as_bytes()));
 /// assert_eq!(
-///     header.get_sec_ws_accept(),
+///     header.get("sec-websocket-accept"),
 ///     Some("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=".as_bytes())
 /// );
 /// ```
