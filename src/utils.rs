@@ -35,6 +35,8 @@ static mut RNG: XorShift128Plus = XorShift128Plus {
 pub fn rand_num() -> u64 {
     unsafe { RNG.next() }
 }
+
+#[allow(dead_code)]
 pub fn rand_u128() -> u128 {
     unsafe {
         let high = RNG.next() as u128;

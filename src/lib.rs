@@ -12,7 +12,11 @@ mod ws;
 pub mod handshake;
 #[cfg(feature = "http")]
 pub mod http;
-pub use ws::{client, server, WebSocket};
+#[cfg(feature = "client")]
+pub use ws::client;
+#[cfg(feature = "server")]
+pub use ws::server;
+pub use ws::WebSocket;
 
 use mask::*;
 use utils::*;
