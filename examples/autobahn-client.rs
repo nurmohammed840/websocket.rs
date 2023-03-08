@@ -52,7 +52,7 @@ async fn update_reports() -> Result<()> {
     ws.close(()).await
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let total = get_case_count().await.expect("Error getting case count");
     for case in 1..=total {

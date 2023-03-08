@@ -10,7 +10,7 @@ use web_socket::{CloseCode, CloseEvent, DataType, WebSocket, SERVER};
 
 const ADDR: &str = "127.0.0.1:9002";
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     println!("Listening on: {ADDR}");
     let listener = TcpListener::bind(ADDR).await.unwrap();
