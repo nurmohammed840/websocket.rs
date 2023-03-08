@@ -32,8 +32,8 @@ pub struct Data<'a, Stream> {
 
 impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
     #[inline]
-    async fn _read_fragmented_header(&mut self) -> Result<()> {
-        self.ws.read_fragmented_header().await?;
+    async fn _fragmented_header(&mut self) -> Result<()> {
+        self.ws.fragmented_header().await?;
         self.mask = Mask::from(read_buf(&mut self.ws.stream).await?);
         Ok(())
     }

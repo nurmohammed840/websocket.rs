@@ -2,6 +2,8 @@
 
 use std::{collections::HashMap, fmt};
 
+/// Provides a interface for formatting HTTP headers
+/// 
 /// # Example
 ///
 /// ```rust
@@ -31,7 +33,7 @@ impl<K: fmt::Display, V: fmt::Display> Header for (K, V) {
     }
 }
 
-/// it represents an HTTP message with a schema and a header.
+/// It represents an HTTP message with a schema and a header.
 ///
 /// ### Example
 ///
@@ -60,26 +62,23 @@ impl<'a> Http<'a> {
         self.headers.get(key.as_ref()).copied()
     }
 
-    fn is_ws_upgrade(&self) -> Option<bool> {
+    fn _is_ws_upgrade(&self) -> Option<bool> {
         let upgrade = self.get("upgrade")?.eq_ignore_ascii_case(b"websocket");
         let connection = self.get("connection")?.eq_ignore_ascii_case(b"upgrade");
         Some(upgrade && connection)
     }
 
-    /// get http `sec-websocket-key` header value.
-    pub fn get_sec_ws_key(&self) -> Option<&[u8]> {
-        let suppoted_version = self
-            .get("sec-websocket-version")?
-            .windows(2)
-            .any(|version| version == b"13");
-
-        (self.is_ws_upgrade()? && suppoted_version).then_some(self.get("sec-websocket-key")?)
+    /// Determine if the incoming HTTP request is an upgrade request to the WebSocket protocol.
+    pub fn is_ws_upgrade(&self) -> bool {
+        matches!(self._is_ws_upgrade(), Some(true))
     }
 
-    /// get http `sec-websocket-accept` header value.
-    pub fn get_sec_ws_accept(&self) -> Option<&[u8]> {
-        self.is_ws_upgrade()?
-            .then_some(self.get("sec-websocket-accept")?)
+    /// get http `sec-websocket-key` header value.
+    pub fn get_sec_ws_key(&self) -> Option<&[u8]> {
+        self.get("sec-websocket-version")?
+            .windows(2)
+            .any(|version| version == b"13")
+            .then_some(self.get("sec-websocket-key")?)
     }
 
     /// parse an HTTP message from a byte slice

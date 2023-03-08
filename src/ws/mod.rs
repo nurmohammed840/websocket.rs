@@ -137,7 +137,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
     /// |                     Payload Data continued ...                |
     /// +---------------------------------------------------------------+
     /// ```
-    async fn header(&mut self) -> Result<(bool, u8, usize)> {
+    async fn header(&mut self) -> Result<u8> {
         loop {
             let [b1, b2] = read_buf(&mut self.stream).await?;
 
@@ -272,16 +272,15 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
                     _ => err!(CloseEvent::Error("unknown opcode")),
                 }
             } else {
-                // Feature: client may intentionally sends consecutive fragment frames of size `0` ?
-                // if !fin && len == 0 {
-                //     return proto_err("Fragment length shouldn't be zero");
-                // }
-                let len = match len {
+                // Client may intentionally sends consecutive fragment frames of size `0` ?
+                // if !fin && len == 0 { err!("fragment length shouldn't be zero"); }
+                self.fin = fin;
+                self.len = match len {
                     126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
                     127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
                     len => len,
                 };
-                return Ok((fin, opcode, len));
+                return Ok(opcode);
             }
         }
     }
@@ -305,13 +304,11 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
     ///   Control frames themselves MUST NOT be fragmented.
     ///   An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
     #[inline]
-    async fn read_fragmented_header(&mut self) -> Result<()> {
-        let (fin, opcode, len) = self.header().await?;
+    async fn fragmented_header(&mut self) -> Result<()> {
+        let opcode = self.header().await?;
         if opcode != 0 {
             err!(CloseEvent::Error("expected fragment frame"));
         }
-        self.fin = fin;
-        self.len = len;
         Ok(())
     }
 
@@ -333,7 +330,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
             if self.fin {
                 return Ok(());
             }
-            self.read_fragmented_header().await?;
+            self.fragmented_header().await?;
             // also skip masking keys sended from client
             if SERVER == SIDE {
                 self.len += 4;
@@ -344,16 +341,12 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
     #[inline]
     async fn _recv(&mut self) -> Result<DataType> {
         self.discard_old_data().await?;
-
-        let (fin, opcode, len) = self.header().await?;
-        let data_type = match opcode {
-            1 => DataType::Text,
-            2 => DataType::Binary,
+        let opcode = self.header().await?;
+        match opcode {
+            1 => Ok(DataType::Text),
+            2 => Ok(DataType::Binary),
             _ => err!(CloseEvent::Error("expected data frame")),
-        };
-        self.fin = fin;
-        self.len = len;
-        Ok(data_type)
+        }
     }
 }
 
@@ -364,7 +357,7 @@ macro_rules! cls_if_err {
             Ok(val) => Ok(val),
             Err(err) => {
                 $ws.is_closed = true;
-                let _ = $ws.stream.flush().await;
+                // let _ = $ws.stream.flush().await;
                 Err(err)
             }
         }
@@ -394,7 +387,7 @@ macro_rules! default_impl_for_data {
                         if self.ws.fin {
                             return Ok(0);
                         }
-                        self._read_fragmented_header().await?;
+                        self._fragmented_header().await?;
                     }
                     self._read(buf).await
                 })
@@ -408,7 +401,7 @@ macro_rules! default_impl_for_data {
                         if self.fin() {
                             err!(UnexpectedEof, "failed to fill whole buffer");
                         }
-                        self._read_fragmented_header().await?;
+                        self._fragmented_header().await?;
                     });
                     Ok(())
                 })
@@ -450,7 +443,7 @@ macro_rules! default_impl_for_data {
                         if self.fin() {
                             break Ok(());
                         }
-                        self._read_fragmented_header().await?;
+                        self._fragmented_header().await?;
                     }
                 })
             }

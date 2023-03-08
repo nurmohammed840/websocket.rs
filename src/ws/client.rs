@@ -109,7 +109,7 @@ where
     }
 
     if header
-        .get_sec_ws_accept()
+        .get("sec-websocket-accept")
         .ok_or_else(|| http_err("couldn't get `Accept-Key` from http response"))?
         != handshake::accept_key_from(sec_key).as_bytes()
     {
@@ -138,8 +138,8 @@ pub struct Data<'a, Stream> {
 
 impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
     #[inline]
-    async fn _read_fragmented_header(&mut self) -> Result<()> {
-        self.ws.read_fragmented_header().await
+    async fn _fragmented_header(&mut self) -> Result<()> {
+        self.ws.fragmented_header().await
     }
 
     #[inline]

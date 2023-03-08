@@ -19,9 +19,9 @@ use utils::*;
 use std::io::Result;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Used to represent `WebSocket<SERVER>` type.
+/// Used to represent `WebSocket<SERVER, IO>` type.
 pub const SERVER: bool = true;
-/// Used to represent `WebSocket<CLIENT>` type.
+/// Used to represent `WebSocket<CLIENT, IO>` type.
 pub const CLIENT: bool = false;
 
 /// This trait is responsible for encoding websocket messages.
