@@ -18,7 +18,7 @@ USAGE:
 
 Example:
     echo server 127.0.0.1
-    echo client localhost:80
+    echo client localhost:8080
 "#;
 
 const USAGE: &str = r#"
@@ -138,11 +138,11 @@ fn main() {
     match args.nth(1).as_deref() {
         Some("server" | "-s") => {
             let host = args.next().unwrap_or("0.0.0.0".into());
-            let port = if host.contains(':') { "" } else { ":80" };
+            let port = if host.contains(':') { "" } else { ":8080" };
             utils::block_on(server(format!("{host}{port}"))).unwrap();
         }
         Some("client" | "-c") => {
-            let uri = args.next().unwrap_or("localhost:80".into());
+            let uri = args.next().unwrap_or("localhost:8080".into());
             utils::block_on(client(uri)).unwrap();
         }
         _ => println!("{HELP}"),

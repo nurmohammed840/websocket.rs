@@ -29,7 +29,7 @@ async fn run_test(case: u32) -> Result<()> {
     match event.into_inner().unwrap().downcast::<CloseEvent>() {
         Ok(cls_event) => match *cls_event {
             CloseEvent::Error(_) => ws.close(CloseCode::ProtocolError).await?,
-            CloseEvent::Close { code, .. } => ws.close(code).await?,
+            CloseEvent::Close { .. } => ws.close(()).await?,
         },
         Err(_err) => {}
     }

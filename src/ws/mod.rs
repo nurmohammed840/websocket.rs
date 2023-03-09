@@ -197,43 +197,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
                 }
                 match opcode {
                     // Close
-                    8 => {
-                        // - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
-                        //   representing a status code with value /code/ defined in [Section 7.4](https://datatracker.ietf.org/doc/html/rfc6455#section-7.4). Following the 2-byte integer,
-                        //
-                        // - Close frames sent from client to server must be masked.
-                        // - The application MUST NOT send any more data frames after sending a `Close` frame.
-                        //
-                        // - If an endpoint receives a Close frame and did not previously send a
-                        //   Close frame, the endpoint MUST send a Close frame in response.  (When
-                        //   sending a Close frame in response, the endpoint typically echos the
-                        //   status code it received.)  It SHOULD do so as soon as practical.  An
-                        //   endpoint MAY delay sending a Close frame until its current message is
-                        //   sent
-                        //
-                        // - After both sending and receiving a Close message, an endpoint
-                        //   considers the WebSocket connection closed and MUST close the
-                        //   underlying TCP connection.
-                        let code = msg
-                            .get(..2)
-                            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
-                            .unwrap_or(1000);
-
-                        if let 1000..=1003 | 1007..=1011 | 1015 | 3000..=3999 | 4000..=4999 = code {
-                            match msg.get(2..).map(|data| String::from_utf8(data.to_vec())) {
-                                Some(Ok(msg)) => err!(CloseEvent::Close {
-                                    code,
-                                    reason: msg.into_boxed_str()
-                                }),
-                                Some(Err(_)) => err!(CloseEvent::Error("invalid utf-8 payload")),
-                                _ => {}
-                            }
-                        }
-                        err!(CloseEvent::Close {
-                            code,
-                            reason: String::new().into_boxed_str()
-                        });
-                    }
+                    8 => on_close(msg)?,
                     // Ping
                     9 => (self.on_event)(&mut self.stream, Event::Ping(msg)).await?,
                     // Pong
@@ -286,15 +250,12 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     async fn discard_old_data(&mut self) -> Result<()> {
         loop {
             if self.len > 0 {
-                unsafe {
-                    let mut discard = Vec::<u8>::with_capacity(self.len);
-                    let uninit = std::slice::from_raw_parts_mut(discard.as_mut_ptr(), self.len);
-                    let amt = self.stream.read(uninit).await?;
-                    if amt == 0 {
-                        err!(ConnectionAborted, "The connection was aborted");
-                    }
-                    self.len -= amt;
+                let mut discard = utils::uninit_bytes(self.len);
+                let amt = self.stream.read(&mut discard).await?;
+                if amt == 0 {
+                    err!(ConnectionAborted, "The connection was aborted");
                 }
+                self.len -= amt;
                 continue;
             }
             if self.fin {
@@ -320,6 +281,46 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     }
 }
 
+/// - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
+///   representing a status code with value /code/ defined in [Section 7.4](https:///datatracker.ietf.org/doc/html/rfc6455#section-7.4).
+///   Following the 2-byte integer,
+///
+/// - The application MUST NOT send any more data frames after sending a `Close` frame.
+///
+/// - If an endpoint receives a Close frame and did not previously send a
+///   Close frame, the endpoint MUST send a Close frame in response.  (When
+///   sending a Close frame in response, the endpoint typically echos the
+///   status code it received.)  It SHOULD do so as soon as practical.  An
+///   endpoint MAY delay sending a Close frame until its current message is
+///   sent
+///
+/// - After both sending and receiving a Close message, an endpoint
+///   considers the WebSocket connection closed and MUST close the
+///   underlying TCP connection.
+fn on_close(msg: Vec<u8>) -> Result<()> {
+    let code = msg
+        .get(..2)
+        .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+        .unwrap_or(1000);
+
+    match code {
+        1000..=1003 | 1007..=1011 | 1015 | 3000..=3999 | 4000..=4999 => {
+            match msg.get(2..).map(|data| String::from_utf8(data.to_vec())) {
+                Some(Ok(msg)) => err!(CloseEvent::Close {
+                    code,
+                    reason: msg.into_boxed_str()
+                }),
+                None => err!(CloseEvent::Close {
+                    code,
+                    reason: "".into()
+                }),
+                Some(Err(_)) => err!(CloseEvent::Error("invalid utf-8 payload")),
+            }
+        }
+        _ => err!(CloseEvent::Error("invalid close code")),
+    }
+}
+
 macro_rules! cls_if_err {
     [$ws:expr, $code:expr] => ({
         if $ws.is_closed { err!(NotConnected, "read after close"); }
@@ -328,7 +329,7 @@ macro_rules! cls_if_err {
             Err(err) => {
                 $ws.is_closed = true;
                 Err(err)
-            }
+            } 
         }
     });
 }
