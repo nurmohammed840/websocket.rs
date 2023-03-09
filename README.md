@@ -15,27 +15,20 @@ Or add this to your `Cargo.toml` file.
 
 ```toml
 [dependencies]
-web-socket = "0.4"
+web-socket = "0.5"
 ```
 
 ### Ping-Pong Example
 
-You can run this example with: `cargo run --example ping_pong`
+You can run this example with: `cargo run --example minimal`
 
 ```rust no_run
 use std::io::Result;
-use web_socket::{client::WSS, DataType, Event};
+use web_socket::{client::WSS, DataType};
 
 async fn example() -> Result<()> {
     let mut ws = WSS::connect("ws.ifelse.io:443", "/").await?;
-
-    ws.on_event = Box::new(|ev| {
-        println!("Pong: {ev}");
-        Ok(())
-    });
-
-    for _ in 0..5 {
-        ws.send(Event::Ping(b"Hello!")).await?;
+    for _ in 0..3 {
         ws.send("Copy Cat!").await?;
 
         let mut data = ws.recv().await?;

@@ -22,7 +22,7 @@ use mask::*;
 use utils::*;
 
 use std::io::Result;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 /// Used to represent `WebSocket<SERVER, IO>` type.
 pub const SERVER: bool = true;
@@ -69,24 +69,28 @@ pub enum DataType {
 
 /// Represent a websocket event, either `Ping` or `Pong`
 #[derive(Debug, Clone)]
-pub enum Event<'a> {
+pub enum Event<Data> {
     /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
-    Ping(&'a [u8]),
+    ///
+    /// And SHOULD respond with Pong frame as soon as is practical.
+    Ping(Data),
 
     /// A Pong frame sent in response to a Ping frame must have identical
     /// "Application data" as found in the message body of the Ping frame being replied to.
     ///
+    /// If an endpoint receives a Ping frame and has not yet sent Pong frame(s) in response to previous Ping frame(s), the endpoint MAY
+    /// elect to send a Pong frame for only the most recently processed Ping frame.
+    ///
     ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
-    Pong(&'a [u8]),
+    Pong(Data),
 }
 
-impl Event<'_> {
+impl<Data> Event<Data> {
     /// Returns the slice of data contained within a `Ping` or `Pong` frame.
     #[inline]
-    pub const fn data(&self) -> &[u8] {
+    pub const fn data(&self) -> &Data {
         match self {
-            Event::Ping(data) => data,
-            Event::Pong(data) => data,
+            Event::Ping(data) | Event::Pong(data) => data,
         }
     }
 }
@@ -153,4 +157,32 @@ impl From<u16> for CloseCode {
             _ => CloseCode::PolicyViolation,
         }
     }
+}
+
+/// Sends a pong frame in response to a ping frame received from the WebSocket endpoint.
+///
+/// # Example
+///
+/// ```no_run
+/// use web_socket::{client::WS, Event, send_pong, CLIENT};
+///
+/// # async {
+/// let mut ws = WS::connect("ws.ifelse.io:80", "/").await?;
+/// ws.on_event = |stream, ev| Box::pin(async move {
+///   match ev {
+///       // Send `Pong` frame to server
+///       Event::Ping(msg) => send_pong::<CLIENT>(stream, msg).await,
+///       Event::Pong(_) => Ok(()),
+///   }
+/// });
+/// # std::io::Result::<_>::Ok(()) };
+/// ```
+#[inline]
+pub async fn send_pong<const ME: bool>(
+    stream: &mut (impl tokio::io::AsyncWrite + Unpin),
+    data: impl AsRef<[u8]>,
+) -> Result<()> {
+    let mut pong = vec![];
+    Event::Pong(data.as_ref()).encode::<ME>(&mut pong);
+    stream.write_all(&pong).await
 }

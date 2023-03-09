@@ -1,5 +1,8 @@
 #![allow(clippy::unusual_byte_groupings)]
+use std::{future::Future, pin::Pin};
+
 use crate::{errors::err, *};
+use tokio::io::AsyncWriteExt;
 
 #[cfg(feature = "client")]
 /// client specific implementation
@@ -8,8 +11,6 @@ pub mod client;
 #[cfg(feature = "server")]
 /// server specific implementation
 pub mod server;
-
-type EventAction = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 /// WebSocket implementation for both client and server
 pub struct WebSocket<const SIDE: bool, Stream> {
@@ -26,14 +27,16 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// let mut ws = WS::connect("localhost:80", "/").await?;
     /// // Fire when received ping/pong frame.
-    /// ws.on_event = Box::new(|ev| {
-    ///     println!("{ev:?}");
-    ///     Ok(())
+    /// ws.on_event = |stream, ev| Box::pin(async move {
+    ///   println!("Event: {ev}");
+    ///   Ok(())
     /// });
-    ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
-    pub on_event: Box<dyn FnMut(Event) -> EventAction + Send + Sync>,
+    pub on_event: fn(
+        &mut Stream,
+        Event<Vec<u8>>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + Sync + '_>>,
 
     /// used in `cls_if_err`
     is_closed: bool,
@@ -42,7 +45,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     len: usize,
 }
 
-impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
+impl<const SIDE: bool, W: Unpin + tokio::io::AsyncWrite> WebSocket<SIDE, W> {
     /// Send message to a endpoint by writing it to a WebSocket stream.
     ///
     /// ### Example
@@ -58,7 +61,6 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// // You can also send control frame.
     /// ws.send(Event::Ping(b"Hello!")).await?;
     /// ws.send(Event::Pong(b"Hello!")).await?;
-    ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
     #[inline]
@@ -84,7 +86,6 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     ///
     /// let ws = WS::connect("localhost:80", "/").await?;
     /// ws.close((CloseCode::Normal, "Closed successfully")).await?;
-    ///
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
     pub async fn close<T>(mut self, reason: T) -> Result<()>
@@ -104,7 +105,7 @@ impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
     fn from(stream: Stream) -> Self {
         Self {
             stream,
-            on_event: Box::new(|_| Ok(())),
+            on_event: |_, _| Box::pin(async { Ok(()) }),
 
             is_closed: false,
 
@@ -114,7 +115,7 @@ impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
     }
 }
 
-impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
+impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     /// ### WebSocket Frame Header
     ///
     /// ```txt
@@ -184,7 +185,6 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
                         "control frame MUST have a payload length of 125 bytes or less"
                     ));
                 }
-
                 let mut msg = vec![0; len];
                 if SERVER == SIDE {
                     let mut mask = Mask::from(read_buf(&mut self.stream).await?);
@@ -195,7 +195,6 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
                 } else {
                     self.stream.read_exact(&mut msg).await?;
                 }
-
                 match opcode {
                     // Close
                     8 => {
@@ -220,54 +219,25 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SIDE, IO> {
                             .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
                             .unwrap_or(1000);
 
-                        let mut reason = String::new().into_boxed_str();
-
                         if let 1000..=1003 | 1007..=1011 | 1015 | 3000..=3999 | 4000..=4999 = code {
                             match msg.get(2..).map(|data| String::from_utf8(data.to_vec())) {
-                                Some(Ok(msg)) => reason = msg.into_boxed_str(),
+                                Some(Ok(msg)) => err!(CloseEvent::Close {
+                                    code,
+                                    reason: msg.into_boxed_str()
+                                }),
                                 Some(Err(_)) => err!(CloseEvent::Error("invalid utf-8 payload")),
                                 _ => {}
                             }
-                            let mut writer = vec![];
-                            message::encode::<SIDE>(&mut writer, true, 8, &msg);
-                            let _ = self.stream.write_all(&writer).await;
                         }
-                        err!(CloseEvent::Close { code, reason });
+                        err!(CloseEvent::Close {
+                            code,
+                            reason: String::new().into_boxed_str()
+                        });
                     }
                     // Ping
-                    9 => {
-                        // A Ping frame MAY include "Application data".
-                        // Unless it already received a Close frame.  It SHOULD respond with Pong frame as soon as is practical.
-                        //
-                        // A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
-                        if let Err(reason) = (self.on_event)(Event::Ping(&msg)) {
-                            let _ = self
-                                .stream
-                                .write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str()))
-                                .await;
-
-                            err!(reason);
-                        };
-                        self.send(Event::Pong(&msg)).await?;
-                    }
+                    9 => (self.on_event)(&mut self.stream, Event::Ping(msg)).await?,
                     // Pong
-                    10 => {
-                        // A Pong frame sent in response to a Ping frame must have identical
-                        // "Application data" as found in the message body of the Ping frame being replied to.
-                        //
-                        // If an endpoint receives a Ping frame and has not yet sent Pong frame(s) in response to previous Ping frame(s), the endpoint MAY
-                        // elect to send a Pong frame for only the most recently processed Ping frame.
-                        //
-                        //  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
-                        if let Err(reason) = (self.on_event)(Event::Pong(&msg)) {
-                            let _ = self
-                                .stream
-                                .write_all(&CloseFrame::encode::<SIDE>(reason.to_string().as_str()))
-                                .await;
-
-                            err!(reason);
-                        }
-                    }
+                    10 => (self.on_event)(&mut self.stream, Event::Pong(msg)).await?,
                     // 11-15 are reserved for further control frames
                     _ => err!(CloseEvent::Error("unknown opcode")),
                 }
@@ -357,7 +327,6 @@ macro_rules! cls_if_err {
             Ok(val) => Ok(val),
             Err(err) => {
                 $ws.is_closed = true;
-                // let _ = $ws.stream.flush().await;
                 Err(err)
             }
         }
@@ -378,12 +347,26 @@ macro_rules! read_exect {
 }
 macro_rules! default_impl_for_data {
     () => {
-        impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
+        impl<IO: Unpin + AsyncRead> Data<'_, IO> {
+            /// Length of the "Payload data" in bytes.
+            #[inline]
+            #[allow(clippy::len_without_is_empty)]
+            pub fn len(&self) -> usize {
+                self.ws.len
+            }
+
+            /// Indicates that this is the final fragment in a message.  The first
+            /// fragment MAY also be the final fragment.
+            #[inline]
+            pub fn fin(&self) -> bool {
+                self.ws.fin
+            }
+
             /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
             #[inline]
             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 cls_if_err!(self.ws, {
-                    if self.len() == 0 {
+                    if self.ws.len == 0 {
                         if self.ws.fin {
                             return Ok(0);
                         }
@@ -398,7 +381,7 @@ macro_rules! default_impl_for_data {
             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
                 cls_if_err!(self.ws, {
                     read_exect!(self, buf, {
-                        if self.fin() {
+                        if self.ws.fin {
                             err!(UnexpectedEof, "failed to fill whole buffer");
                         }
                         self._fragmented_header().await?;
@@ -422,7 +405,7 @@ macro_rules! default_impl_for_data {
                 cls_if_err!(self.ws, {
                     let mut amt = 0;
                     loop {
-                        let additional = self.len();
+                        let additional = self.ws.len;
                         amt += additional;
                         if amt > limit {
                             err!(CloseEvent::Error("data read limit exceeded"));
@@ -439,8 +422,8 @@ macro_rules! default_impl_for_data {
                             });
                             buf.set_len(len + additional);
                         }
-                        debug_assert!(self.len() == 0);
-                        if self.fin() {
+                        debug_assert!(self.ws.len == 0);
+                        if self.ws.fin {
                             break Ok(());
                         }
                         self._fragmented_header().await?;
@@ -450,31 +433,17 @@ macro_rules! default_impl_for_data {
         }
 
         // Re-export
-        impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
-            /// Length of the "Payload data" in bytes.
+        impl<IO: Unpin + tokio::io::AsyncWrite> Data<'_, IO> {
+            /// send message to a endpoint by writing it to a WebSocket stream.
             #[inline]
-            #[allow(clippy::len_without_is_empty)]
-            pub fn len(&self) -> usize {
-                self.ws.len
-            }
-
-            /// Indicates that this is the final fragment in a message.  The first
-            /// fragment MAY also be the final fragment.
-            #[inline]
-            pub fn fin(&self) -> bool {
-                self.ws.fin
+            pub async fn send(&mut self, data: impl Message) -> Result<()> {
+                self.ws.send(data).await
             }
 
             /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
             #[inline]
             pub async fn flash(&mut self) -> Result<()> {
                 self.ws.stream.flush().await
-            }
-
-            /// send message to a endpoint by writing it to a WebSocket stream.
-            #[inline]
-            pub async fn send(&mut self, data: impl Message) -> Result<()> {
-                self.ws.send(data).await
             }
         }
     };

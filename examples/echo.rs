@@ -9,7 +9,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     spawn,
 };
-use web_socket::{client::WS, CloseCode, CloseEvent, DataType, Event};
+use web_socket::{client::WS, CloseCode, CloseEvent, DataType, Event, CLIENT, SERVER};
 
 const HELP: &str = r#"
 USAGE:
@@ -24,10 +24,10 @@ Example:
 const USAGE: &str = r#"
 ______________________________________________________
 |                                                    |
-| USAGE: <COMMAND>: <data>                           |
+| USAGE: <COMMAND>: <message>                        |
 |                                                    |
 | COMMAND:                                           |
-|    text, send                  Send text message   |
+|    text, send, data            Send text message   |
 |    ping                        Send ping frame     |
 |    pong                        Send pong frame     |
 |    q, quit, exit               Close connection    |
@@ -56,10 +56,16 @@ async fn server(addr: String) -> Result<()> {
 async fn handeler(stream: TcpStream) -> Result<()> {
     let addr = stream.peer_addr()?;
     let mut ws = ws::upgrade(stream).await?;
-    ws.on_event = Box::new(move |ev| {
-        on_event(ev, &format!("From: {addr}; "));
-        Ok(())
-    });
+
+    ws.on_event = |stream, ev| {
+        Box::pin(async move {
+            if let Event::Ping(data) = &ev {
+                web_socket::send_pong::<SERVER>(stream, data).await?;
+            }
+            on_event(ev, &format!("From: {:?}", stream.get_mut().local_addr()?));
+            Ok(())
+        })
+    };
 
     loop {
         let mut data = ws.recv().await?;
@@ -85,10 +91,15 @@ async fn client(uri: String) -> Result<()> {
     let mut ws = WS::connect(uri, "/").await?;
     println!("[Client] Connected to {}", ws.stream.get_ref().peer_addr()?);
 
-    ws.on_event = Box::new(|ev| {
-        on_event(ev, "[ECHO]");
-        Ok(())
-    });
+    ws.on_event = |stream, ev| {
+        Box::pin(async move {
+            if let Event::Ping(data) = &ev {
+                web_socket::send_pong::<CLIENT>(stream, data).await?;
+            }
+            on_event(ev, "[ECHO]");
+            Ok(())
+        })
+    };
 
     let stdin = std::io::stdin();
     let mut buf = String::new();
@@ -99,7 +110,7 @@ async fn client(uri: String) -> Result<()> {
         let (cmd, msg) = buf.split_once(':').unwrap_or(("help", ""));
         let msg = msg.trim();
         match cmd {
-            "text" | "send" => {
+            "text" | "send" | "data" => {
                 ws.send(msg).await?;
                 println!("[ECHO] Text: {}", ws::read_msg!(ws)?);
             }
@@ -115,7 +126,7 @@ async fn client(uri: String) -> Result<()> {
     ws.close((CloseCode::Normal, msg)).await
 }
 
-fn on_event(ev: Event, pre: &str) {
+fn on_event(ev: Event<Vec<u8>>, pre: &str) {
     match ev {
         Event::Ping(_) => println!("{pre} Ping: {ev}"),
         Event::Pong(_) => println!("{pre} Pong: {ev}"),

@@ -8,7 +8,7 @@ impl<Stream> WebSocket<SERVER, Stream> {
     }
 }
 
-impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<SERVER, IO> {
+impl<IO: Unpin + AsyncRead> WebSocket<SERVER, IO> {
     /// reads [Data] from websocket stream.
     #[inline]
     pub async fn recv(&mut self) -> Result<Data<IO>> {
@@ -30,7 +30,7 @@ pub struct Data<'a, Stream> {
     pub(crate) ws: &'a mut WebSocket<SERVER, Stream>,
 }
 
-impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
+impl<IO: Unpin + AsyncRead> Data<'_, IO> {
     #[inline]
     async fn _fragmented_header(&mut self) -> Result<()> {
         self.ws.fragmented_header().await?;
@@ -42,11 +42,9 @@ impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = buf.len().min(self.ws.len);
         if len > 0 {
-            let mut bytes = Vec::<u8>::with_capacity(len);
-            unsafe {
-                let uninit = std::slice::from_raw_parts_mut(bytes.as_mut_ptr(), len);
-                len = self.ws.stream.read(uninit).await?;
-            }
+            let mut bytes = utils::uninit_bytes(len);
+            len = self.ws.stream.read(&mut bytes).await?;
+
             bytes[..len]
                 .iter()
                 .zip(&mut self.mask)

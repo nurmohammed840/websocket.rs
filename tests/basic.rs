@@ -5,29 +5,28 @@ use web_socket::*;
 type WebSocket<const SIDE: bool> = web_socket::WebSocket<SIDE, BufReader<DuplexStream>>;
 const MSG: &str = "Hello, World";
 
+macro_rules! code {
+    [$ws: expr] => {
+        $ws.send(MSG).await?;
+
+        let mut data = $ws.recv().await?;
+        assert_eq!(data.fin(), true);
+        assert_eq!(data.len(), MSG.len());
+        assert_eq!(data.ty, DataType::Text);
+    
+        let mut buf = vec![];
+        data.read_to_end(&mut buf).await?;
+        assert_eq!(Ok("Hello, World".into()), String::from_utf8(buf));    
+    };
+}
+
 async fn server(mut ws: WebSocket<SERVER>) -> Result<()> {
-    ws.send(MSG).await?;
-
-    // Sending raw bytes:
-    // ws.stream
-    //     .write_all(&[
-    //         0x01, 0x03, 0x48, 0x65, 0x6c, // fragmented frame
-    //         0x80, 0x02, 0x6c, 0x6f, // final frame
-    //     ])
-    //     .await?;
-
+    code!(ws);
     Ok(())
 }
 
 async fn client(mut ws: WebSocket<CLIENT>) -> Result<()> {
-    let mut data = ws.recv().await?;
-    assert_eq!(data.fin(), true);
-    assert_eq!(data.len(), MSG.len());
-    assert_eq!(data.ty, DataType::Text);
-
-    let mut buf = vec![];
-    data.read_to_end(&mut buf).await?;
-    println!("{:?}", String::from_utf8(buf));
+    code!(ws);
     Ok(())
 }
 
@@ -37,7 +36,6 @@ fn example() -> Result<()> {
         let mut duplex = duplex(8192);
         let server = tokio::spawn(server(WebSocket::from(BufReader::new(duplex.0))));
         let client = tokio::spawn(client(WebSocket::from(BufReader::new(duplex.1))));
-
         server.await??;
         client.await??;
         Ok(())

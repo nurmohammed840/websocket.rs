@@ -1,17 +1,10 @@
 mod utils;
 use std::io::Result;
-use web_socket::{client::WSS, DataType, Event};
+use web_socket::{client::WSS, DataType};
 
-async fn ping_pong() -> Result<()> {
+async fn example() -> Result<()> {
     let mut ws = WSS::connect("ws.ifelse.io:443", "/").await?;
-
-    ws.on_event = Box::new(|ev| {
-        println!("Pong: {ev}");
-        Ok(())
-    });
-
-    for _ in 0..5 {
-        ws.send(Event::Ping(b"Hello!")).await?;
+    for _ in 0..3 {
         ws.send("Copy Cat!").await?;
 
         let mut data = ws.recv().await?;
@@ -25,5 +18,5 @@ async fn ping_pong() -> Result<()> {
 }
 
 fn main() {
-    println!("Status: {:?}", utils::block_on(ping_pong()));
+    println!("Status: {:?}", utils::block_on(example()));
 }

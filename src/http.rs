@@ -3,7 +3,7 @@
 use std::{collections::HashMap, fmt};
 
 /// Provides a interface for formatting HTTP headers
-/// 
+///
 /// # Example
 ///
 /// ```rust

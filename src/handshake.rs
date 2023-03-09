@@ -40,7 +40,7 @@ use sha1::{Digest, Sha1};
 pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 /// Create `Sec-WebSocket-Accept` key from `Sec-WebSocket-Key` http header value.
-/// 
+///
 /// ### Example
 ///
 /// ```rust

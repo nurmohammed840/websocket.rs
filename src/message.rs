@@ -35,12 +35,12 @@ impl<const N: usize> Message for [u8; N] {
     }
 }
 
-impl Message for Event<'_> {
+impl<Data: AsRef<[u8]>> Message for Event<Data> {
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         match self {
-            Event::Ping(data) => encode::<SIDE>(writer, true, 9, data),
-            Event::Pong(data) => encode::<SIDE>(writer, true, 10, data),
+            Event::Ping(data) => encode::<SIDE>(writer, true, 9, data.as_ref()),
+            Event::Pong(data) => encode::<SIDE>(writer, true, 10, data.as_ref()),
         }
     }
 }

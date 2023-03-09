@@ -22,9 +22,13 @@ impl fmt::Display for CloseEvent {
     }
 }
 
-impl fmt::Display for Event<'_> {
+impl<Data: AsRef<[u8]>> fmt::Display for Event<Data> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", std::str::from_utf8(self.data()).unwrap_or(""))
+        write!(
+            f,
+            "{}",
+            std::str::from_utf8(self.data().as_ref()).unwrap_or("")
+        )
     }
 }

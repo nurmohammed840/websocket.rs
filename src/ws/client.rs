@@ -89,7 +89,7 @@ impl WSS {
 
 async fn handshake<IO, I, H>(stream: &mut IO, host: &str, path: &str, headers: I) -> Result<()>
 where
-    IO: Unpin + AsyncBufRead + AsyncWrite,
+    IO: Unpin + AsyncBufRead + tokio::io::AsyncWrite,
     I: IntoIterator<Item = H>,
     H: Header,
 {
@@ -120,7 +120,7 @@ where
     Ok(())
 }
 
-impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<CLIENT, IO> {
+impl<IO: Unpin + AsyncRead> WebSocket<CLIENT, IO> {
     /// reads [Data] from websocket stream.
     #[inline]
     pub async fn recv(&mut self) -> Result<Data<IO>> {
@@ -136,7 +136,7 @@ pub struct Data<'a, Stream> {
     pub(crate) ws: &'a mut WebSocket<CLIENT, Stream>,
 }
 
-impl<IO: Unpin + AsyncRead + AsyncWrite> Data<'_, IO> {
+impl<IO: Unpin + AsyncRead> Data<'_, IO> {
     #[inline]
     async fn _fragmented_header(&mut self) -> Result<()> {
         self.ws.fragmented_header().await

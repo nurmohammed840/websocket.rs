@@ -10,7 +10,12 @@ where
     Ok(buf)
 }
 
-// -------------------------------------------------------
+#[inline]
+pub fn uninit_bytes(len: usize) -> Box<[u8]> {
+    let mut bytes = Vec::with_capacity(len);
+    unsafe { bytes.set_len(len) };
+    bytes.into_boxed_slice()
+}
 
 struct XorShift128Plus {
     x: u64,
