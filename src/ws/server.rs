@@ -1,9 +1,9 @@
 use super::*;
 
 impl<Stream> WebSocket<SERVER, Stream> {
-    /// Create a new websocket instance.
+    /// Create a websocket server instance.
     #[inline]
-    pub fn new(stream: Stream) -> Self {
+    pub fn server(stream: Stream) -> Self {
         Self::from(stream)
     }
 }
@@ -42,9 +42,8 @@ impl<IO: Unpin + AsyncRead> Data<'_, IO> {
     async fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = buf.len().min(self.ws.len);
         if len > 0 {
-            let mut bytes = utils::uninit_bytes(len);
+            let mut bytes = vec![0; len];
             len = self.ws.stream.read(&mut bytes).await?;
-
             bytes[..len]
                 .iter()
                 .zip(&mut self.mask)

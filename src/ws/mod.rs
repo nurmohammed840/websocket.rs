@@ -33,6 +33,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     /// });
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
+    #[allow(clippy::type_complexity)]
     pub on_event: fn(
         &mut Stream,
         Event<Vec<u8>>,
@@ -250,7 +251,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     async fn discard_old_data(&mut self) -> Result<()> {
         loop {
             if self.len > 0 {
-                let mut discard = utils::uninit_bytes(self.len);
+                let mut discard = vec![0; self.len];
                 let amt = self.stream.read(&mut discard).await?;
                 if amt == 0 {
                     err!(ConnectionAborted, "The connection was aborted");
@@ -329,7 +330,7 @@ macro_rules! cls_if_err {
             Err(err) => {
                 $ws.is_closed = true;
                 Err(err)
-            } 
+            }
         }
     });
 }

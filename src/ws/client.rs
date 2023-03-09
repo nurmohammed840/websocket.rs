@@ -6,6 +6,20 @@ use tokio::{
     net::{TcpStream, ToSocketAddrs},
 };
 
+
+impl<IO> WebSocket<CLIENT, IO> {
+    /// Create a new websocket client instance.
+    #[inline]
+    pub fn client(stream: IO) -> Self {
+        Self::from(stream)
+    }
+}
+
+// impl<IO: Unpin + AsyncBufRead + tokio::io::AsyncWrite> WebSocket<CLIENT, IO> {
+  
+// }
+
+
 /// Unencrypted [WebSocket] client.
 pub type WS = WebSocket<CLIENT, BufReader<TcpStream>>;
 

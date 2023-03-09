@@ -33,7 +33,7 @@ pub async fn upgrade(stream: TcpStream) -> Result<WebSocket<SERVER, BufReader<Tc
     stream.consume(amt);
     stream.get_mut().write_all(res.as_bytes()).await?;
 
-    Ok(WebSocket::new(stream))
+    Ok(WebSocket::server(stream))
 }
 
 #[macro_export]
