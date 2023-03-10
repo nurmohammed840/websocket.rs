@@ -3,7 +3,6 @@
 #![warn(missing_docs)]
 
 mod errors;
-mod mask;
 mod message;
 mod utils;
 mod ws;
@@ -19,7 +18,6 @@ pub mod http;
 
 pub use ws::WebSocket;
 
-use mask::*;
 use utils::*;
 
 use std::io::Result;

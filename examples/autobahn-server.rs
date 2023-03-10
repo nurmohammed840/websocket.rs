@@ -1,6 +1,6 @@
 mod utils;
 
-use std::{io::{Result, ErrorKind, Error}, str};
+use std::{io::Result, str};
 use tokio::net::{TcpListener, TcpStream};
 use utils::ws;
 use web_socket::{CloseCode, DataType, Event};

@@ -120,7 +120,6 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     /// |                     Payload Data continued ...                |
     /// +---------------------------------------------------------------+
     /// ```
-    #[inline]
     async fn header(&mut self) -> Result<Either<(DataType, bool, usize)>> {
         let [b1, b2] = read_buf(&mut self.stream).await?;
 
@@ -171,11 +170,11 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
             }
             let mut msg = vec![0; len];
             if SERVER == SIDE {
-                let mut mask = Mask::from(read_buf(&mut self.stream).await?);
+                let keys: [u8; 4] = read_buf(&mut self.stream).await?;
                 self.stream.read_exact(&mut msg).await?;
-                msg.iter_mut()
-                    .zip(&mut mask)
-                    .for_each(|(byte, key)| *byte ^= key);
+                for (i, byte) in msg.iter_mut().enumerate() {
+                    *byte ^= keys[i % 4];
+                }
             } else {
                 self.stream.read_exact(&mut msg).await?;
             }
@@ -197,56 +196,14 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
                 len => len,
             };
             let data_type = match opcode {
+                0 => DataType::Continue,
                 1 => DataType::Text,
                 2 => DataType::Binary,
-                _ => DataType::Continue,
+                _ => return Ok(Either::Event(Event::Error("reserved opcode"))),
             };
             Ok(Either::Data((data_type, fin, len)))
-            // match cb(opcode) {
-            //     Either::Data(data_type) => Ok(Either::Data((data_type, fin, len))),
-            //     Either::Event(ev) => Ok(Either::Event(ev)),
-            // }
         }
     }
-
-    // /// The FIN and opcode fields work together to send a message split up into separate frames. This is called message fragmentation.
-    // ///
-    // /// ```txt
-    // /// Client: FIN=1, opcode=0x1, msg="hello"
-    // /// Server: (process complete message immediately) Hi.
-    // /// Client: FIN=0, opcode=0x1, msg="and a"
-    // /// Server: (listening, new message containing text started)
-    // /// Client: FIN=0, opcode=0x0, msg="happy new"
-    // /// Server: (listening, payload concatenated to previous message)
-    // /// Client: FIN=1, opcode=0x0, msg="year!"
-    // /// Server: (process complete message) Happy new year to you too!
-    // /// ```
-    // ///
-    // /// ### Note
-    // ///
-    // /// - Control frames MAY be injected in the middle of a fragmented message.
-    // /// - Control frames themselves MUST NOT be fragmented.
-    // /// - An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
-    // #[inline]
-    // async fn next(&mut self) -> Result<Either<(DataType, bool, usize)>> {
-    //     self.header(|opcode| {
-    //         if opcode != 0 {
-    //             return Either::Event(Event::Error("expected fragment frame"));
-    //         }
-    //         Either::Data(DataType::Continue)
-    //     })
-    //     .await
-    // }
-
-    // #[inline]
-    // async fn _recv(&mut self) -> Result<Either<(DataType, bool, usize)>> {
-    //     self.header(|opcode| match opcode {
-    //         1 => Either::Data(DataType::Text),
-    //         2 => Either::Data(DataType::Binary),
-    //         _ => Either::Event(Event::Error("expected data frame")),
-    //     })
-    //     .await
-    // }
 }
 
 /// - If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order: Big Endian)
