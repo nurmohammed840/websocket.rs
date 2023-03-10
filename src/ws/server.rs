@@ -1,4 +1,5 @@
 use super::*;
+use std::io::{Error, ErrorKind};
 
 impl<IO> WebSocket<SERVER, IO> {
     /// Create a websocket server instance.
@@ -6,36 +7,38 @@ impl<IO> WebSocket<SERVER, IO> {
     pub fn server(stream: IO) -> Self {
         Self {
             stream,
-            _is_closed: false,
+            is_closed: false,
             done: true,
         }
     }
 }
 
 impl<IO: Unpin + AsyncRead> WebSocket<SERVER, IO> {
-    /// reads [Data] from websocket stream.
+    /// reads [Event] from websocket stream.
     #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
-        match self.header().await? {
-            Either::Data((ty, done, len)) => {
-                match (self.done, ty) {
-                    (true, DataType::Continue) => return Ok(Event::Error("expected data frame")),
-                    (false, DataType::Text | DataType::Binary) => {
-                        return Ok(Event::Error("expected fragment frame"))
-                    }
-                    _ => self.done = done,
-                }
-                let keys: [u8; 4] = read_buf(&mut self.stream).await?;
+        if self.is_closed {
+            return Err(Error::new(ErrorKind::NotConnected, "read after close"));
+        }
+        let result = self
+            .header(|this, ty, len| async move {
+                let mask: [u8; 4] = read_buf(&mut this.stream).await?;
 
                 let mut data = vec![0; len].into_boxed_slice();
-                self.stream.read_exact(&mut data).await?;
+                this.stream.read_exact(&mut data).await?;
+                utils::apply_mask(&mut data, mask);
 
-                for (i, byte) in data.iter_mut().enumerate() {
-                    *byte ^= keys[i % 4];
-                }
-                Ok(Event::Data { ty, done, data })
-            }
-            Either::Event(ev) => Ok(ev),
+                Ok(Event::Data {
+                    ty,
+                    done: this.done,
+                    data,
+                })
+            })
+            .await;
+
+        if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = result {
+            self.is_closed = true;
         }
+        result
     }
 }

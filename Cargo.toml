@@ -12,8 +12,7 @@ description = "WebSocket implementation for both client and server"
 exclude = ["/examples", "/autobahn", "/tests",  ".*"]
 
 [features]
-default = ["server", "tls", "client"]
-server = []
+default = ["tls", "client"]
 tls = ["dep:tokio-rustls", "dep:webpki-roots"]
 client = ["http", "tokio/net"]
 http = ["dep:base64", "dep:sha-1"]

@@ -10,6 +10,33 @@ where
     Ok(buf)
 }
 
+#[inline]
+pub fn apply_mask(data: &mut [u8], mask: [u8; 4]) {
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte ^= mask[i % 4];
+    }
+}
+
+// macro_rules! cls_if_err {
+//     [$ws:expr, $code:expr] => ({
+//         if $ws.is_closed { err!(NotConnected, "read after close"); }
+//         match $code {
+//             Ok(val) => Ok(val),
+//             Err(err) => {
+//                 $ws.is_closed = true;
+//                 Err(err)
+//             }
+//         }
+//     });
+// }
+
+macro_rules! err {
+    [$msg: expr] => {
+        return Ok(Event::Error($msg))
+    };
+}
+pub(crate) use err;
+
 struct XorShift128Plus {
     x: u64,
     y: u64,

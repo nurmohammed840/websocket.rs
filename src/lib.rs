@@ -2,7 +2,6 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
-mod errors;
 mod message;
 mod utils;
 mod ws;
@@ -13,15 +12,13 @@ pub mod handshake;
 pub mod http;
 // #[cfg(feature = "client")]
 // pub use ws::client;
-// #[cfg(feature = "server")]
-// pub use ws::server;
 
 pub use ws::WebSocket;
 
 use utils::*;
 
 use std::io::Result;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Used to represent `WebSocket<SERVER, IO>` type.
 pub const SERVER: bool = true;
@@ -181,31 +178,3 @@ impl From<u16> for CloseCode {
         }
     }
 }
-
-// /// Sends a pong frame in response to a ping frame received from the WebSocket endpoint.
-// ///
-// /// # Example
-// ///
-// /// ```no_run
-// /// use web_socket::{client::WS, Event, send_pong, CLIENT};
-// ///
-// /// # async {
-// /// let mut ws = WS::connect("ws.ifelse.io:80", "/").await?;
-// /// ws.on_event = |stream, ev| Box::pin(async move {
-// ///   match ev {
-// ///       // Send `Pong` frame to server
-// ///       Event::Ping(msg) => send_pong::<CLIENT>(stream, msg).await,
-// ///       Event::Pong(_) => Ok(()),
-// ///   }
-// /// });
-// /// # std::io::Result::<_>::Ok(()) };
-// /// ```
-// #[inline]
-// pub async fn send_pong<const ME: bool>(
-//     stream: &mut (impl tokio::io::AsyncWrite + Unpin),
-//     data: impl AsRef<[u8]>,
-// ) -> Result<()> {
-//     let mut pong = vec![];
-//     Event::Pong(data.as_ref()).encode::<ME>(&mut pong);
-//     stream.write_all(&pong).await
-// }
