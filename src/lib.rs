@@ -8,14 +8,15 @@ mod message;
 mod utils;
 mod ws;
 
-#[cfg(feature = "http")]
-pub mod handshake;
-#[cfg(feature = "http")]
-pub mod http;
-#[cfg(feature = "client")]
-pub use ws::client;
-#[cfg(feature = "server")]
-pub use ws::server;
+// #[cfg(feature = "http")]
+// pub mod handshake;
+// #[cfg(feature = "http")]
+// pub mod http;
+// #[cfg(feature = "client")]
+// pub use ws::client;
+// #[cfg(feature = "server")]
+// pub use ws::server;
+
 pub use ws::WebSocket;
 
 use mask::*;
@@ -43,21 +44,6 @@ pub trait CloseFrame {
     fn encode<const SIDE: bool>(self) -> Self::Frame;
 }
 
-/// The [CloseEvent] enum represents the possible events that can occur when a WebSocket connection is closed.
-/// It has two variants: `Error` and `Close`.
-#[derive(Debug)]
-pub enum CloseEvent {
-    /// represents the websocket error message.
-    Error(&'static str),
-    /// represents a successful close event of the WebSocket connection.
-    Close {
-        /// represents the status [CloseCode] of the close event.
-        code: u16,
-        /// represents the reason for the close event
-        reason: Box<str>,
-    },
-}
-
 /// It represent the type of data that is being sent over the WebSocket connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DataType {
@@ -65,15 +51,27 @@ pub enum DataType {
     Text,
     /// `Binary` data can be any sequence of bytes and is typically used for sending non-textual data, such as images, audio files etc...
     Binary,
+    ///
+    Continue
 }
 
-/// Represent a websocket event, either `Ping` or `Pong`
-#[derive(Debug, Clone)]
-pub enum Event<Data> {
+#[derive(Debug)]
+/// Represent a websocket event
+pub enum Event {
+    ///
+    Data {
+        ///
+        ty: DataType,
+        ///
+        done: bool,
+        ///
+        data: Box<[u8]>,
+    },
+
     /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
     ///
     /// And SHOULD respond with Pong frame as soon as is practical.
-    Ping(Data),
+    Ping(Box<[u8]>),
 
     /// A Pong frame sent in response to a Ping frame must have identical
     /// "Application data" as found in the message body of the Ping frame being replied to.
@@ -82,17 +80,18 @@ pub enum Event<Data> {
     /// elect to send a Pong frame for only the most recently processed Ping frame.
     ///
     ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
-    Pong(Data),
-}
+    Pong(Box<[u8]>),
 
-impl<Data> Event<Data> {
-    /// Returns the slice of data contained within a `Ping` or `Pong` frame.
-    #[inline]
-    pub const fn data(&self) -> &Data {
-        match self {
-            Event::Ping(data) | Event::Pong(data) => data,
-        }
-    }
+    /// represents the websocket error message.
+    Error(&'static str),
+
+    /// represents a successful close event of the WebSocket connection.
+    Close {
+        /// represents the status [CloseCode] of the close event.
+        code: u16,
+        /// represents the reason for the close event
+        reason: Box<str>,
+    },
 }
 
 /// When closing an established connection an endpoint MAY indicate a reason for closure.
@@ -159,30 +158,30 @@ impl From<u16> for CloseCode {
     }
 }
 
-/// Sends a pong frame in response to a ping frame received from the WebSocket endpoint.
-///
-/// # Example
-///
-/// ```no_run
-/// use web_socket::{client::WS, Event, send_pong, CLIENT};
-///
-/// # async {
-/// let mut ws = WS::connect("ws.ifelse.io:80", "/").await?;
-/// ws.on_event = |stream, ev| Box::pin(async move {
-///   match ev {
-///       // Send `Pong` frame to server
-///       Event::Ping(msg) => send_pong::<CLIENT>(stream, msg).await,
-///       Event::Pong(_) => Ok(()),
-///   }
-/// });
-/// # std::io::Result::<_>::Ok(()) };
-/// ```
-#[inline]
-pub async fn send_pong<const ME: bool>(
-    stream: &mut (impl tokio::io::AsyncWrite + Unpin),
-    data: impl AsRef<[u8]>,
-) -> Result<()> {
-    let mut pong = vec![];
-    Event::Pong(data.as_ref()).encode::<ME>(&mut pong);
-    stream.write_all(&pong).await
-}
+// /// Sends a pong frame in response to a ping frame received from the WebSocket endpoint.
+// ///
+// /// # Example
+// ///
+// /// ```no_run
+// /// use web_socket::{client::WS, Event, send_pong, CLIENT};
+// ///
+// /// # async {
+// /// let mut ws = WS::connect("ws.ifelse.io:80", "/").await?;
+// /// ws.on_event = |stream, ev| Box::pin(async move {
+// ///   match ev {
+// ///       // Send `Pong` frame to server
+// ///       Event::Ping(msg) => send_pong::<CLIENT>(stream, msg).await,
+// ///       Event::Pong(_) => Ok(()),
+// ///   }
+// /// });
+// /// # std::io::Result::<_>::Ok(()) };
+// /// ```
+// #[inline]
+// pub async fn send_pong<const ME: bool>(
+//     stream: &mut (impl tokio::io::AsyncWrite + Unpin),
+//     data: impl AsRef<[u8]>,
+// ) -> Result<()> {
+//     let mut pong = vec![];
+//     Event::Pong(data.as_ref()).encode::<ME>(&mut pong);
+//     stream.write_all(&pong).await
+// }

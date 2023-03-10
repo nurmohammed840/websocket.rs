@@ -1,12 +1,12 @@
 #![allow(clippy::unusual_byte_groupings)]
-use std::{future::Future, pin::Pin};
+use crate::*;
 
-use crate::{errors::err, *};
-use tokio::io::AsyncWriteExt;
+// use std::{future::Future, pin::Pin};
+// use tokio::io::AsyncWriteExt;
 
-#[cfg(feature = "client")]
-/// client specific implementation
-pub mod client;
+// #[cfg(feature = "client")]
+// /// client specific implementation
+// pub mod client;
 
 #[cfg(feature = "server")]
 /// server specific implementation
@@ -16,34 +16,9 @@ pub mod server;
 pub struct WebSocket<const SIDE: bool, Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
-
-    /// Listen for incoming websocket [Event].
-    ///
-    /// ### Example
-    ///
-    /// ```no_run
-    /// use web_socket::{client::WS, Event};
-    /// # async {
-    ///
-    /// let mut ws = WS::connect("localhost:80", "/").await?;
-    /// // Fire when received ping/pong frame.
-    /// ws.on_event = |stream, ev| Box::pin(async move {
-    ///   println!("Event: {ev}");
-    ///   Ok(())
-    /// });
-    /// # std::io::Result::<_>::Ok(()) };
-    /// ```
-    #[allow(clippy::type_complexity)]
-    pub on_event: fn(
-        &mut Stream,
-        Event<Vec<u8>>,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + Sync + '_>>,
-
     /// used in `cls_if_err`
-    is_closed: bool,
-
-    fin: bool,
-    len: usize,
+    _is_closed: bool,
+    done: bool
 }
 
 impl<const SIDE: bool, W: Unpin + tokio::io::AsyncWrite> WebSocket<SIDE, W> {
@@ -68,6 +43,22 @@ impl<const SIDE: bool, W: Unpin + tokio::io::AsyncWrite> WebSocket<SIDE, W> {
     pub async fn send(&mut self, msg: impl Message) -> Result<()> {
         let mut bytes = vec![];
         msg.encode::<SIDE>(&mut bytes);
+        self.stream.write_all(&bytes).await
+    }
+
+    #[inline]
+    ///
+    pub async fn send_ping(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
+        let mut bytes = vec![];
+        message::encode::<SIDE>(&mut bytes, true, 9, data.as_ref());
+        self.stream.write_all(&bytes).await
+    }
+
+    #[inline]
+    ///
+    pub async fn send_pong(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
+        let mut bytes = vec![];
+        message::encode::<SIDE>(&mut bytes, true, 10, data.as_ref());
         self.stream.write_all(&bytes).await
     }
 
@@ -101,19 +92,9 @@ impl<const SIDE: bool, W: Unpin + tokio::io::AsyncWrite> WebSocket<SIDE, W> {
     }
 }
 
-impl<const SIDE: bool, Stream> From<Stream> for WebSocket<SIDE, Stream> {
-    #[inline]
-    fn from(stream: Stream) -> Self {
-        Self {
-            stream,
-            on_event: |_, _| Box::pin(async { Ok(()) }),
-
-            is_closed: false,
-
-            fin: true,
-            len: 0,
-        }
-    }
+enum Either<Data> {
+    Data(Data),
+    Event(Event),
 }
 
 impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
@@ -139,83 +120,89 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     /// |                     Payload Data continued ...                |
     /// +---------------------------------------------------------------+
     /// ```
-    async fn header(&mut self) -> Result<u8> {
-        loop {
-            let [b1, b2] = read_buf(&mut self.stream).await?;
+    async fn header(
+        &mut self,
+        cb: fn(u8) -> Either<DataType>,
+    ) -> Result<Either<(DataType, bool, usize)>> {
+        let [b1, b2] = read_buf(&mut self.stream).await?;
 
-            let fin = b1 & 0b_1000_0000 != 0;
-            let rsv = b1 & 0b_111_0000;
-            let opcode = b1 & 0b_1111;
-            let len = (b2 & 0b_111_1111) as usize;
+        let fin = b1 & 0b_1000_0000 != 0;
+        let rsv = b1 & 0b_111_0000;
+        let opcode = b1 & 0b_1111;
+        let len = (b2 & 0b_111_1111) as usize;
 
-            // Defines whether the "Payload data" is masked.  If set to 1, a
-            // masking key is present in masking-key, and this is used to unmask
-            // the "Payload data" as per [Section 5.3](https://datatracker.ietf.org/doc/html/rfc6455#section-5.3).  All frames sent from
-            // client to server have this bit set to 1.
-            let is_masked = b2 & 0b_1000_0000 != 0;
+        // Defines whether the "Payload data" is masked.  If set to 1, a
+        // masking key is present in masking-key, and this is used to unmask
+        // the "Payload data" as per [Section 5.3](https://datatracker.ietf.org/doc/html/rfc6455#section-5.3).  All frames sent from
+        // client to server have this bit set to 1.
+        let is_masked = b2 & 0b_1000_0000 != 0;
 
-            if rsv != 0 {
-                // MUST be `0` unless an extension is negotiated that defines meanings
-                // for non-zero values.  If a nonzero value is received and none of
-                // the negotiated extensions defines the meaning of such a nonzero
-                // value, the receiving endpoint MUST _Fail the WebSocket Connection_.
-                err!(CloseEvent::Error("reserve bit MUST be `0`"));
+        if rsv != 0 {
+            // MUST be `0` unless an extension is negotiated that defines meanings
+            // for non-zero values.  If a nonzero value is received and none of
+            // the negotiated extensions defines the meaning of such a nonzero
+            // value, the receiving endpoint MUST _Fail the WebSocket Connection_.
+            return Ok(Either::Event(Event::Error("reserve bit MUST be `0`")));
+        }
+
+        // A client MUST mask all frames that it sends to the server. (Note
+        // that masking is done whether or not the WebSocket Protocol is running
+        // over TLS.)  The server MUST close the connection upon receiving a
+        // frame that is not masked.
+        //
+        // A server MUST NOT mask any frames that it sends to the client.
+        if SERVER == SIDE {
+            if !is_masked {
+                return Ok(Either::Event(Event::Error("expected masked frame")));
             }
+        } else if is_masked {
+            return Ok(Either::Event(Event::Error("expected unmasked frame")));
+        }
 
-            // A client MUST mask all frames that it sends to the server. (Note
-            // that masking is done whether or not the WebSocket Protocol is running
-            // over TLS.)  The server MUST close the connection upon receiving a
-            // frame that is not masked.
-            //
-            // A server MUST NOT mask any frames that it sends to the client.
+        // 3-7 are reserved for further non-control frames.
+        if opcode >= 8 {
+            if !fin {
+                return Ok(Either::Event(Event::Error(
+                    "control frame MUST NOT be fragmented",
+                )));
+            }
+            if len > 125 {
+                return Ok(Either::Event(Event::Error(
+                    "control frame MUST have a payload length of 125 bytes or less",
+                )));
+            }
+            let mut msg = vec![0; len];
             if SERVER == SIDE {
-                if !is_masked {
-                    err!(CloseEvent::Error("expected masked frame"));
-                }
-            } else if is_masked {
-                err!(CloseEvent::Error("expected unmasked frame"));
-            }
-
-            // 3-7 are reserved for further non-control frames.
-            if opcode >= 8 {
-                if !fin {
-                    err!(CloseEvent::Error("control frame MUST NOT be fragmented"));
-                }
-                if len > 125 {
-                    err!(CloseEvent::Error(
-                        "control frame MUST have a payload length of 125 bytes or less"
-                    ));
-                }
-                let mut msg = vec![0; len];
-                if SERVER == SIDE {
-                    let mut mask = Mask::from(read_buf(&mut self.stream).await?);
-                    self.stream.read_exact(&mut msg).await?;
-                    msg.iter_mut()
-                        .zip(&mut mask)
-                        .for_each(|(byte, key)| *byte ^= key);
-                } else {
-                    self.stream.read_exact(&mut msg).await?;
-                }
-                match opcode {
-                    // Close
-                    8 => on_close(msg)?,
-                    // Ping
-                    9 => (self.on_event)(&mut self.stream, Event::Ping(msg)).await?,
-                    // Pong
-                    10 => (self.on_event)(&mut self.stream, Event::Pong(msg)).await?,
-                    // 11-15 are reserved for further control frames
-                    _ => err!(CloseEvent::Error("unknown opcode")),
-                }
+                let mut mask = Mask::from(read_buf(&mut self.stream).await?);
+                self.stream.read_exact(&mut msg).await?;
+                msg.iter_mut()
+                    .zip(&mut mask)
+                    .for_each(|(byte, key)| *byte ^= key);
             } else {
-                // Client may intentionally sends consecutive fragment frames of size `0` ?
-                // if !fin && len == 0 { err!("fragment length shouldn't be zero"); }
-                self.fin = fin;
-                self.len = match len {
-                    126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
-                    127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
-                    len => len,
-                };
-                return Ok(opcode);
+                self.stream.read_exact(&mut msg).await?;
+            }
+            let ev = match opcode {
+                // Close
+                8 => on_close(msg),
+                // Ping
+                9 => Event::Ping(msg.into()),
+                // Pong
+                10 => Event::Pong(msg.into()),
+                // 11-15 are reserved for further control frames
+                _ => Event::Error("unknown opcode"),
+            };
+            Ok(Either::Event(ev))
+        } else {
+            match cb(opcode) {
+                Either::Data(data_type) => {
+                    let len = match len {
+                        126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
+                        127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
+                        len => len,
+                    };
+                    Ok(Either::Data((data_type, fin, len)))
+                }
+                Either::Event(ev) => Ok(Either::Event(ev)),
             }
         }
     }
@@ -235,50 +222,28 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     ///
     /// ### Note
     ///
-    /// - Control frames MAY be injected in the middle ofa fragmented message.
-    ///   Control frames themselves MUST NOT be fragmented.
-    ///   An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
+    /// - Control frames MAY be injected in the middle of a fragmented message.
+    /// - Control frames themselves MUST NOT be fragmented.
+    /// - An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
     #[inline]
-    async fn fragmented_header(&mut self) -> Result<()> {
-        let opcode = self.header().await?;
-        if opcode != 0 {
-            err!(CloseEvent::Error("expected fragment frame"));
-        }
-        Ok(())
+    async fn next(&mut self) -> Result<Either<(DataType, bool, usize)>> {
+        self.header(|opcode| {
+            if opcode != 0 {
+                return Either::Event(Event::Error("expected fragment frame"));
+            }
+            Either::Data(DataType::Continue)
+        })
+        .await
     }
 
     #[inline]
-    async fn discard_old_data(&mut self) -> Result<()> {
-        loop {
-            if self.len > 0 {
-                let mut discard = vec![0; self.len];
-                let amt = self.stream.read(&mut discard).await?;
-                if amt == 0 {
-                    err!(ConnectionAborted, "The connection was aborted");
-                }
-                self.len -= amt;
-                continue;
-            }
-            if self.fin {
-                return Ok(());
-            }
-            self.fragmented_header().await?;
-            // also skip masking keys sended from client
-            if SERVER == SIDE {
-                self.len += 4;
-            }
-        }
-    }
-
-    #[inline]
-    async fn _recv(&mut self) -> Result<DataType> {
-        self.discard_old_data().await?;
-        let opcode = self.header().await?;
-        match opcode {
-            1 => Ok(DataType::Text),
-            2 => Ok(DataType::Binary),
-            _ => err!(CloseEvent::Error("expected data frame")),
-        }
+    async fn _recv(&mut self) -> Result<Either<(DataType, bool, usize)>> {
+        self.header(|opcode| match opcode {
+            1 => Either::Data(DataType::Text),
+            2 => Either::Data(DataType::Binary),
+            _ => Either::Event(Event::Error("expected data frame")),
+        })
+        .await
     }
 }
 
@@ -298,7 +263,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
 /// - After both sending and receiving a Close message, an endpoint
 ///   considers the WebSocket connection closed and MUST close the
 ///   underlying TCP connection.
-fn on_close(msg: Vec<u8>) -> Result<()> {
+fn on_close(msg: Vec<u8>) -> Event {
     let code = msg
         .get(..2)
         .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
@@ -307,150 +272,150 @@ fn on_close(msg: Vec<u8>) -> Result<()> {
     match code {
         1000..=1003 | 1007..=1011 | 1015 | 3000..=3999 | 4000..=4999 => {
             match msg.get(2..).map(|data| String::from_utf8(data.to_vec())) {
-                Some(Ok(msg)) => err!(CloseEvent::Close {
+                Some(Ok(msg)) => Event::Close {
                     code,
-                    reason: msg.into_boxed_str()
-                }),
-                None => err!(CloseEvent::Close {
+                    reason: msg.into_boxed_str(),
+                },
+                None => Event::Close {
                     code,
-                    reason: "".into()
-                }),
-                Some(Err(_)) => err!(CloseEvent::Error("invalid utf-8 payload")),
+                    reason: "".into(),
+                },
+                Some(Err(_)) => Event::Error("invalid utf-8 payload"),
             }
         }
-        _ => err!(CloseEvent::Error("invalid close code")),
+        _ => Event::Error("invalid close code"),
     }
 }
 
-macro_rules! cls_if_err {
-    [$ws:expr, $code:expr] => ({
-        if $ws.is_closed { err!(NotConnected, "read after close"); }
-        match $code {
-            Ok(val) => Ok(val),
-            Err(err) => {
-                $ws.is_closed = true;
-                Err(err)
-            }
-        }
-    });
-}
-macro_rules! read_exect {
-    [$this:expr, $buf:expr, $code:expr] => {
-        loop {
-            match $this._read($buf).await? {
-                0 => match $buf.is_empty() {
-                    true => break,
-                    false => $code,
-                },
-                amt => $buf = &mut $buf[amt..],
-            }
-        }
-    };
-}
-macro_rules! default_impl_for_data {
-    () => {
-        impl<IO: Unpin + AsyncRead> Data<'_, IO> {
-            /// Length of the "Payload data" in bytes.
-            #[inline]
-            #[allow(clippy::len_without_is_empty)]
-            pub fn len(&self) -> usize {
-                self.ws.len
-            }
+// macro_rules! cls_if_err {
+//     [$ws:expr, $code:expr] => ({
+//         if $ws.is_closed { err!(NotConnected, "read after close"); }
+//         match $code {
+//             Ok(val) => Ok(val),
+//             Err(err) => {
+//                 $ws.is_closed = true;
+//                 Err(err)
+//             }
+//         }
+//     });
+// }
+// macro_rules! read_exect {
+//     [$this:expr, $buf:expr, $code:expr] => {
+//         loop {
+//             match $this._read($buf).await? {
+//                 0 => match $buf.is_empty() {
+//                     true => break,
+//                     false => $code,
+//                 },
+//                 amt => $buf = &mut $buf[amt..],
+//             }
+//         }
+//     };
+// }
+// macro_rules! default_impl_for_data {
+//     () => {
+//         impl<IO: Unpin + AsyncRead> Data<'_, IO> {
+//             /// Length of the "Payload data" in bytes.
+//             #[inline]
+//             #[allow(clippy::len_without_is_empty)]
+//             pub fn len(&self) -> usize {
+//                 self.ws.len
+//             }
 
-            /// Indicates that this is the final fragment in a message.  The first
-            /// fragment MAY also be the final fragment.
-            #[inline]
-            pub fn fin(&self) -> bool {
-                self.ws.fin
-            }
+//             /// Indicates that this is the final fragment in a message.  The first
+//             /// fragment MAY also be the final fragment.
+//             #[inline]
+//             pub fn fin(&self) -> bool {
+//                 self.ws.fin
+//             }
 
-            /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
-            #[inline]
-            pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-                cls_if_err!(self.ws, {
-                    if self.ws.len == 0 {
-                        if self.ws.fin {
-                            return Ok(0);
-                        }
-                        self._fragmented_header().await?;
-                    }
-                    self._read(buf).await
-                })
-            }
+//             /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
+//             #[inline]
+//             pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+//                 cls_if_err!(self.ws, {
+//                     if self.ws.len == 0 {
+//                         if self.ws.fin {
+//                             return Ok(0);
+//                         }
+//                         self._fragmented_header().await?;
+//                     }
+//                     self._read(buf).await
+//                 })
+//             }
 
-            /// Read the exact number of bytes required to fill buf.
-            #[inline]
-            pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
-                cls_if_err!(self.ws, {
-                    read_exect!(self, buf, {
-                        if self.ws.fin {
-                            err!(UnexpectedEof, "failed to fill whole buffer");
-                        }
-                        self._fragmented_header().await?;
-                    });
-                    Ok(())
-                })
-            }
+//             /// Read the exact number of bytes required to fill buf.
+//             #[inline]
+//             pub async fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<()> {
+//                 cls_if_err!(self.ws, {
+//                     read_exect!(self, buf, {
+//                         if self.ws.fin {
+//                             err!(UnexpectedEof, "failed to fill whole buffer");
+//                         }
+//                         self._fragmented_header().await?;
+//                     });
+//                     Ok(())
+//                 })
+//             }
 
-            /// It is a wrapper around the [Self::read_to_end_with_limit] function with a default limit of `16` MB.
-            #[inline]
-            pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<()> {
-                self.read_to_end_with_limit(buf, 16 * 1024 * 1024).await
-            }
+//             /// It is a wrapper around the [Self::read_to_end_with_limit] function with a default limit of `16` MB.
+//             #[inline]
+//             pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+//                 self.read_to_end_with_limit(buf, 16 * 1024 * 1024).await
+//             }
 
-            /// Reads data until it reaches a specified limit or end of stream.
-            pub async fn read_to_end_with_limit(
-                &mut self,
-                buf: &mut Vec<u8>,
-                limit: usize,
-            ) -> Result<()> {
-                cls_if_err!(self.ws, {
-                    let mut amt = 0;
-                    loop {
-                        let additional = self.ws.len;
-                        amt += additional;
-                        if amt > limit {
-                            err!(CloseEvent::Error("data read limit exceeded"));
-                        }
-                        unsafe {
-                            buf.reserve(additional);
-                            let len = buf.len();
-                            let mut uninit = std::slice::from_raw_parts_mut(
-                                buf.as_mut_ptr().add(len),
-                                additional,
-                            );
-                            read_exect!(self, uninit, {
-                                err!(UnexpectedEof, "failed to fill whole buffer");
-                            });
-                            buf.set_len(len + additional);
-                        }
-                        debug_assert!(self.ws.len == 0);
-                        if self.ws.fin {
-                            break Ok(());
-                        }
-                        self._fragmented_header().await?;
-                    }
-                })
-            }
-        }
+//             /// Reads data until it reaches a specified limit or end of stream.
+//             pub async fn read_to_end_with_limit(
+//                 &mut self,
+//                 buf: &mut Vec<u8>,
+//                 limit: usize,
+//             ) -> Result<usize> {
+//                 cls_if_err!(self.ws, {
+//                     let mut amt = 0;
+//                     loop {
+//                         let additional = self.ws.len;
+//                         amt += additional;
+//                         if amt > limit {
+//                             err!(CloseEvent::Error("data read limit exceeded"));
+//                         }
+//                         unsafe {
+//                             buf.reserve(additional);
+//                             let len = buf.len();
+//                             let mut uninit = std::slice::from_raw_parts_mut(
+//                                 buf.as_mut_ptr().add(len),
+//                                 additional,
+//                             );
+//                             read_exect!(self, uninit, {
+//                                 err!(UnexpectedEof, "failed to fill whole buffer");
+//                             });
+//                             buf.set_len(len + additional);
+//                         }
+//                         debug_assert!(self.ws.len == 0);
+//                         if self.ws.fin {
+//                             break Ok(amt);
+//                         }
+//                         self._fragmented_header().await?;
+//                     }
+//                 })
+//             }
+//         }
 
-        // Re-export
-        impl<IO: Unpin + tokio::io::AsyncWrite> Data<'_, IO> {
-            /// send message to a endpoint by writing it to a WebSocket stream.
-            #[inline]
-            pub async fn send(&mut self, data: impl Message) -> Result<()> {
-                self.ws.send(data).await
-            }
+//         // Re-export
+//         impl<IO: Unpin + tokio::io::AsyncWrite> Data<'_, IO> {
+//             /// send message to a endpoint by writing it to a WebSocket stream.
+//             #[inline]
+//             pub async fn send(&mut self, data: impl Message) -> Result<()> {
+//                 self.ws.send(data).await
+//             }
 
-            /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
-            #[inline]
-            pub async fn flash(&mut self) -> Result<()> {
-                self.ws.stream.flush().await
-            }
-        }
-    };
-}
+//             /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
+//             #[inline]
+//             pub async fn flash(&mut self) -> Result<()> {
+//                 self.ws.stream.flush().await
+//             }
+//         }
+//     };
+// }
 
-pub(self) use cls_if_err;
-pub(self) use default_impl_for_data;
-pub(self) use read_exect;
+// pub(self) use cls_if_err;
+// pub(self) use default_impl_for_data;
+// pub(self) use read_exect;

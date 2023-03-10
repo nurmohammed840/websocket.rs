@@ -6,7 +6,6 @@ use tokio::{
     net::{TcpStream, ToSocketAddrs},
 };
 
-
 impl<IO> WebSocket<CLIENT, IO> {
     /// Create a new websocket client instance.
     #[inline]
@@ -15,10 +14,20 @@ impl<IO> WebSocket<CLIENT, IO> {
     }
 }
 
-// impl<IO: Unpin + AsyncBufRead + tokio::io::AsyncWrite> WebSocket<CLIENT, IO> {
-  
-// }
+impl<IO: Unpin + AsyncRead + tokio::io::AsyncWrite> WebSocket<CLIENT, IO> {
+    ///
+    pub async fn handshake_with_headers<I, H>(&mut self, host: &str, path: &str, headers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = H>,
+        H: Header,
+    {
+        let (request, sec_key) = handshake::request(host, path, headers);
+        self.stream.write_all(request.as_bytes()).await?;
 
+
+        Ok(())
+    }
+}
 
 /// Unencrypted [WebSocket] client.
 pub type WS = WebSocket<CLIENT, BufReader<TcpStream>>;
