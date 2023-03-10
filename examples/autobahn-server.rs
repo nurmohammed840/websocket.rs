@@ -1,6 +1,6 @@
 mod utils;
 
-use std::{io::Result, str};
+use std::{io::{Result, ErrorKind, Error}, str};
 use tokio::net::{TcpListener, TcpStream};
 use utils::ws;
 use web_socket::{CloseCode, DataType, Event};
@@ -24,13 +24,6 @@ async fn handle(stream: TcpStream) -> Result<()> {
     loop {
         match ws.recv().await? {
             Event::Data { ty, done, data } => match (ty, done) {
-                (DataType::Text, true) => match str::from_utf8(&data) {
-                    Ok(msg) => ws.send(msg).await?,
-                    Err(_) => return ws.close(()).await,
-                },
-                (DataType::Binary, true) => ws.send(&*data).await?,
-
-                // -----------------------------------------------------------
                 (DataType::Text | DataType::Binary, false) => {
                     buf.clear();
                     is_txt = ty.is_text();
@@ -38,6 +31,7 @@ async fn handle(stream: TcpStream) -> Result<()> {
                 }
                 (DataType::Continue, false) => buf.extend_from_slice(&data),
                 (DataType::Continue, true) => {
+                    buf.extend_from_slice(&data);
                     match is_txt {
                         true => match str::from_utf8(&buf) {
                             Ok(msg) => ws.send(msg).await?,
@@ -45,8 +39,15 @@ async fn handle(stream: TcpStream) -> Result<()> {
                         },
                         false => ws.send(&*buf).await?,
                     }
-                    buf.clear();
                 }
+
+                // ------------------------------------------------------
+
+                (DataType::Text, true) => match str::from_utf8(&data) {
+                    Ok(msg) => ws.send(msg).await?,
+                    Err(_) => return ws.close(()).await,
+                },
+                (DataType::Binary, true) => ws.send(&*data).await?,
             },
             Event::Ping(data) => ws.send_pong(data).await?,
             Event::Pong(_) => {}

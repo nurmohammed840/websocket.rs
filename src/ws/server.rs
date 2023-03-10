@@ -16,20 +16,15 @@ impl<IO: Unpin + AsyncRead> WebSocket<SERVER, IO> {
     /// reads [Data] from websocket stream.
     #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
-        let result = if self.done {
-            self._recv().await
-        } else {
-            self.next().await
-        }?;
-        match result {
+        match self.header().await? {
             Either::Data((ty, done, len)) => {
-                // match (self.done, ty) {
-                //     (true, DataType::Continue) => return Ok(Event::Error("expected data frame")),
-                //     (false, DataType::Text | DataType::Binary) => {
-                //         return Ok(Event::Error("expected fragment frame"))
-                //     }
-                //     _ => self.done = done
-                // }
+                match (self.done, ty) {
+                    (true, DataType::Continue) => return Ok(Event::Error("expected data frame")),
+                    (false, DataType::Text | DataType::Binary) => {
+                        return Ok(Event::Error("expected fragment frame"))
+                    }
+                    _ => self.done = done,
+                }
                 let keys: [u8; 4] = read_buf(&mut self.stream).await?;
 
                 let mut data = vec![0; len].into_boxed_slice();
