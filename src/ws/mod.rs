@@ -18,7 +18,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     pub stream: Stream,
     /// used in `cls_if_err`
     _is_closed: bool,
-    done: bool
+    done: bool,
 }
 
 impl<const SIDE: bool, W: Unpin + tokio::io::AsyncWrite> WebSocket<SIDE, W> {
@@ -193,15 +193,13 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
             };
             Ok(Either::Event(ev))
         } else {
+            let len = match len {
+                126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
+                127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
+                len => len,
+            };
             match cb(opcode) {
-                Either::Data(data_type) => {
-                    let len = match len {
-                        126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
-                        127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
-                        len => len,
-                    };
-                    Ok(Either::Data((data_type, fin, len)))
-                }
+                Either::Data(data_type) => Ok(Either::Data((data_type, fin, len))),
                 Either::Event(ev) => Ok(Either::Event(ev)),
             }
         }

@@ -7,12 +7,12 @@ impl<T: Message + ?Sized> Message for &T {
     }
 }
 
-impl<T: Message + ?Sized> Message for Box<T> {
-    #[inline]
-    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
-        T::encode::<SIDE>(self, writer)
-    }
-}
+// impl<T: Message + ?Sized> Message for Box<T> {
+//     #[inline]
+//     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
+//         T::encode::<SIDE>(self, writer)
+//     }
+// }
 
 impl Message for str {
     #[inline]
