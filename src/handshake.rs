@@ -131,7 +131,7 @@ pub fn request(
     let path = path.as_ref().trim_start_matches('/');
     let sec_key = base64_encode(crate::utils::rand_u128().to_ne_bytes());
     let headers: String = headers.into_iter().map(|f| Header::fmt(&f)).collect();
-    (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"),sec_key)
+    (format!("GET /{path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {sec_key}\r\n{headers}\r\n"), sec_key)
 }
 
 #[inline]

@@ -60,33 +60,44 @@ impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<CLIENT, IO> {
     {
         let (request, _sec_key) = handshake::request(host, path, headers);
         self.stream.write_all(request.as_bytes()).await?;
+
+        // --------------------------------------------------------
+        let raw_http = vec![0];
+        let end_pattern = [0; 4];
+
+        // --------------------------------------------------------
         Ok(())
     }
 }
 
-// /// Unencrypted [WebSocket] client.
-// pub type WS = WebSocket<CLIENT, BufReader<TcpStream>>;
+// struct RawHttp {
+//     buf: Vec<u8>,
+//     end_pattern: [u8; 4],
+// }
 
-// impl WS {
-//     /// establishe a websocket connection to a remote address.
-//     pub async fn connect<A>(addr: A, path: impl AsRef<str>) -> Result<Self>
-//     where
-//         A: ToSocketAddrs + Display,
-//     {
-//         Self::connect_with_headers(addr, path, [("", ""); 0]).await
+// fn extract_http_headers(response: &str) -> Vec<u8> {
+//     let mut headers = Vec::new();
+//     let mut header_found = false;
+
+//     for byte in response.bytes() {
+//         if byte == b'\r' {
+//             header_found = true;
+//         } else if byte == b'\n' && header_found {
+//             headers.push(b'\r');
+//             headers.push(b'\n');
+//             header_found = false;
+//         } else {
+//             header_found = false;
+//         }
+//         headers.push(byte);
 //     }
 
-//     /// establishes a connection with headers
-//     pub async fn connect_with_headers(
-//         addr: impl ToSocketAddrs + Display,
-//         path: impl AsRef<str>,
-//         headers: impl IntoIterator<Item = impl Header>,
-//     ) -> Result<Self> {
-//         let host = addr.to_string();
-//         let mut stream = BufReader::new(TcpStream::connect(addr).await?);
-//         handshake(&mut stream, &host, path.as_ref(), headers).await?;
-//         Ok(Self::from(stream))
-//     }
+//     headers
+// }
+
+// async fn raw_http(reader: &mut impl AsyncRead) {
+//     let raw_http = vec![0];
+//     let end_pattern = [0; 4];
 // }
 
 // async fn handshake<IO, I, H>(stream: &mut IO, host: &str, path: &str, headers: I) -> Result<()>

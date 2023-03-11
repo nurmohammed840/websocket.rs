@@ -48,10 +48,10 @@ impl<K: fmt::Display, V: fmt::Display> Header for (K, V) {
 ///     Some("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=".as_bytes())
 /// );
 /// ```
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Http<'a> {
     /// schema of the http message (e.g. `HTTP/1.1 101 Switching Protocols`)
-    pub schema: &'a [u8],
+    pub prefix: &'a [u8],
     ///  key-value pairs of http headers
     pub headers: HashMap<String, &'a [u8]>,
 }
@@ -91,7 +91,7 @@ impl<'a> Http<'a> {
             match split_once(bytes, b'\n').ok_or(HTTP_EOF_ERR)? {
                 b"" | b"\r" => {
                     return Ok(Self {
-                        schema,
+                        prefix: schema,
                         headers: header,
                     })
                 }
@@ -108,21 +108,6 @@ impl<'a> Http<'a> {
                 }
             }
         }
-    }
-}
-
-impl<'a> fmt::Debug for Http<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut header = vec![];
-        for (key, value) in &self.headers {
-            if let Ok(value) = std::str::from_utf8(value) {
-                header.push((key, value))
-            }
-        }
-        f.debug_struct("Http")
-            .field("schema", &std::str::from_utf8(self.schema))
-            .field("header", &header)
-            .finish()
     }
 }
 
