@@ -14,7 +14,7 @@ pub use ws::client;
 
 pub use ws::WebSocket;
 
-use std::io::{Error, ErrorKind, Result};
+use std::io::Result;
 use std::{fmt, future::Future};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use utils::*;

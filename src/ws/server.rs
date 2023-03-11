@@ -10,9 +10,10 @@ impl<IO> WebSocket<SERVER, IO> {
 
 impl<IO: Unpin + AsyncRead> WebSocket<SERVER, IO> {
     /// reads [Event] from websocket stream.
+    #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
         if self.is_closed {
-            return Err(Error::new(ErrorKind::NotConnected, "read after close"));
+            io_err!(NotConnected, "read after close");
         }
         let result = self
             .header(|this, ty, len| async move {

@@ -10,9 +10,10 @@ impl<IO> WebSocket<CLIENT, IO> {
 
 impl<IO: Unpin + AsyncRead> WebSocket<CLIENT, IO> {
     /// reads [Event] from websocket stream.
+    #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
         if self.is_closed {
-            return Err(Error::new(ErrorKind::NotConnected, "read after close"));
+            io_err!(NotConnected, "read after close");
         }
         let result = self
             .header(|this, ty, len| async move {
@@ -61,11 +62,6 @@ impl<IO: Unpin + AsyncRead + AsyncWrite> WebSocket<CLIENT, IO> {
         let (request, _sec_key) = handshake::request(host, path, headers);
         self.stream.write_all(request.as_bytes()).await?;
 
-        // --------------------------------------------------------
-        let raw_http = vec![0];
-        let end_pattern = [0; 4];
-
-        // --------------------------------------------------------
         Ok(())
     }
 }
@@ -176,7 +172,7 @@ where
 
     let domain = match host.rsplit_once(':').unwrap().0.try_into() {
         Ok(server_name) => server_name,
-        Err(err) => return Err(Error::new(ErrorKind::InvalidInput, err)),
+        Err(err) => io_err!(InvalidData, err),
     };
     let stream = connector.connect(domain, stream).await?;
     Ok(WebSocket::client(stream))
