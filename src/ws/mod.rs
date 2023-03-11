@@ -1,14 +1,9 @@
 #![allow(clippy::unusual_byte_groupings)]
-use std::future::Future;
-
 use crate::*;
 
-// use std::{future::Future, pin::Pin};
-// use tokio::io::AsyncWriteExt;
-
-// #[cfg(feature = "client")]
-// /// client specific implementation
-// pub mod client;
+#[cfg(feature = "client")]
+/// client specific implementation
+pub mod client;
 
 mod server;
 
@@ -16,7 +11,7 @@ mod server;
 pub struct WebSocket<const SIDE: bool, Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
-    
+
     /// used in `cls_if_err`
     is_closed: bool,
     done: bool,
@@ -248,5 +243,28 @@ fn on_close(msg: Vec<u8>) -> Event {
             }
         }
         _ => Event::Error("invalid close code"),
+    }
+}
+
+impl<const SIDE: bool, Stream> fmt::Debug for WebSocket<SIDE, Stream>
+where
+    Stream: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WebSocket")
+            .field("stream", &self.stream)
+            .field("is_closed", &self.is_closed)
+            .finish()
+    }
+}
+
+impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
+    #[inline]
+    fn from(stream: IO) -> Self {
+        Self {
+            stream,
+            is_closed: false,
+            done: true,
+        }
     }
 }

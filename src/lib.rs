@@ -10,15 +10,14 @@ mod ws;
 pub mod handshake;
 #[cfg(feature = "http")]
 pub mod http;
-// #[cfg(feature = "client")]
-// pub use ws::client;
+pub use ws::client;
 
 pub use ws::WebSocket;
 
-use utils::*;
-
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
+use std::{fmt, future::Future};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use utils::*;
 
 /// Used to represent `WebSocket<SERVER, IO>` type.
 pub const SERVER: bool = true;

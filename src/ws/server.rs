@@ -1,21 +1,15 @@
 use super::*;
-use std::io::{Error, ErrorKind};
 
 impl<IO> WebSocket<SERVER, IO> {
     /// Create a websocket server instance.
     #[inline]
     pub fn server(stream: IO) -> Self {
-        Self {
-            stream,
-            is_closed: false,
-            done: true,
-        }
+        Self::from(stream)
     }
 }
 
 impl<IO: Unpin + AsyncRead> WebSocket<SERVER, IO> {
     /// reads [Event] from websocket stream.
-    #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
         if self.is_closed {
             return Err(Error::new(ErrorKind::NotConnected, "read after close"));
