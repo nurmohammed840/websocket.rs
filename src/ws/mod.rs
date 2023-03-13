@@ -11,6 +11,8 @@ mod server;
 pub struct WebSocket<const SIDE: bool, Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
+    /// maximum allowed payload length in bytes
+    pub max_payload_len: usize,
 
     /// used in `cls_if_err`
     is_closed: bool,
@@ -116,6 +118,7 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
     /// |                     Payload Data continued ...                |
     /// +---------------------------------------------------------------+
     /// ```
+    #[inline]
     async fn header<'a, Fut>(
         &'a mut self,
         footer: fn(&'a mut Self, DataType, usize) -> Fut,
@@ -201,6 +204,9 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
                 127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
                 len => len,
             };
+            if len > self.max_payload_len {
+                err!("payload length exceeded");
+            }
             footer(self, data_type, len).await
         }
     }
@@ -253,6 +259,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WebSocket")
             .field("stream", &self.stream)
+            .field("max_payload_len", &self.max_payload_len)
             .field("is_closed", &self.is_closed)
             .finish()
     }
@@ -263,6 +270,7 @@ impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
     fn from(stream: IO) -> Self {
         Self {
             stream,
+            max_payload_len: 16 * 1024 * 1024,
             is_closed: false,
             done: true,
         }

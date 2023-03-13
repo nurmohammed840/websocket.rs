@@ -8,6 +8,20 @@ impl<IO> WebSocket<CLIENT, IO> {
     }
 }
 
+#[inline]
+async fn footer<IO>(this: &mut WebSocket<CLIENT, IO>, ty: DataType, len: usize) -> Result<Event>
+where
+    IO: Unpin + AsyncRead,
+{
+    let mut data = vec![0; len].into_boxed_slice();
+    this.stream.read_exact(&mut data).await?;
+    Ok(Event::Data {
+        ty,
+        done: this.done,
+        data,
+    })
+}
+
 impl<IO: Unpin + AsyncRead> WebSocket<CLIENT, IO> {
     /// reads [Event] from websocket stream.
     #[inline]
@@ -15,22 +29,11 @@ impl<IO: Unpin + AsyncRead> WebSocket<CLIENT, IO> {
         if self.is_closed {
             io_err!(NotConnected, "read after close");
         }
-        let result = self
-            .header(|this, ty, len| async move {
-                let mut data = vec![0; len].into_boxed_slice();
-                this.stream.read_exact(&mut data).await?;
-                Ok(Event::Data {
-                    ty,
-                    done: this.done,
-                    data,
-                })
-            })
-            .await;
-
-        if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = result {
+        let event = self.header(footer).await;
+        if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
             self.is_closed = true;
         }
-        result
+        event
     }
 }
 
