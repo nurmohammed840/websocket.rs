@@ -1,7 +1,6 @@
 #![allow(clippy::unusual_byte_groupings)]
 use crate::*;
 
-#[cfg(feature = "client")]
 /// client specific implementation
 pub mod client;
 
@@ -276,3 +275,26 @@ impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
         }
     }
 }
+
+macro_rules! def_ws {
+    [$side: tt, $footer: tt] => {
+        impl<Reader> WebSocket<$side, Reader>
+        where
+            Reader: Unpin + AsyncRead,
+        {
+            /// reads [Event] from websocket stream.
+            #[inline]
+            pub async fn recv(&mut self) -> Result<Event> {
+                if self.is_closed {
+                    io_err!(NotConnected, "read after close");
+                }
+                let event = self.header($footer).await;
+                if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
+                    self.is_closed = true;
+                }
+                event
+            }
+        }
+    };
+}
+pub(self) use def_ws;

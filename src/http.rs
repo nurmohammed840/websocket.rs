@@ -82,12 +82,12 @@ impl Http {
         matches!(self._is_ws_upgrade(), Some(true))
     }
 
-    /// get http `sec-websocket-key` header value.
-    pub fn get_sec_ws_key(&self) -> Option<&str> {
-        self.get("sec-websocket-version")?
-            .contains("13")
-            .then_some(self.get("sec-websocket-key")?)
-    }
+    // /// get http `sec-websocket-key` header value.
+    // pub fn get_sec_ws_key(&self) -> Option<&str> {
+    //     self.get("sec-websocket-version")?
+    //         .contains("13")
+    //         .then_some(self.get("sec-websocket-key")?)
+    // }
 
     ///
     pub fn parse(string: &str) -> Option<Self> {

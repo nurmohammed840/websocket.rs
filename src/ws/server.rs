@@ -26,17 +26,4 @@ where
     })
 }
 
-impl<IO: Unpin + AsyncRead> WebSocket<SERVER, IO> {
-    /// reads [Event] from websocket stream.
-    #[inline]
-    pub async fn recv(&mut self) -> Result<Event> {
-        if self.is_closed {
-            io_err!(NotConnected, "read after close");
-        }
-        let event = self.header(footer).await;
-        if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
-            self.is_closed = true;
-        }
-        event
-    }
-}
+def_ws!(SERVER, footer);
