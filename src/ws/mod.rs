@@ -1,21 +1,17 @@
 #![allow(clippy::unusual_byte_groupings)]
 use crate::*;
 
-/// client specific implementation
-pub mod client;
-
+mod client;
 mod server;
 
 /// WebSocket implementation for both client and server
+#[derive(Debug)]
 pub struct WebSocket<const SIDE: bool, Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
     /// maximum allowed payload length in bytes
     pub max_payload_len: usize,
-
-    /// used in `cls_if_err`
     is_closed: bool,
-    done: bool,
 }
 
 impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
@@ -177,27 +173,23 @@ impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
                 self.stream.read_exact(&mut msg).await?;
             }
             match opcode {
-                // Close
                 8 => Ok(on_close(msg)),
-                // Ping
                 9 => Ok(Event::Ping(msg.into())),
-                // Pong
                 10 => Ok(Event::Pong(msg.into())),
                 // 11-15 are reserved for further control frames
                 _ => err!("unknown opcode"),
             }
         } else {
-            let data_type = match opcode {
-                0 => DataType::Continue,
-                1 => DataType::Text,
-                2 => DataType::Binary,
+            let data_type = match (opcode, fin) {
+                (2, true) => DataType::Complete(MessageType::Binary),
+                (1, true) => DataType::Complete(MessageType::Text),
+
+                (2, false) => DataType::Fragment(Fragment::Start(MessageType::Binary)),
+                (1, false) => DataType::Fragment(Fragment::Start(MessageType::Text)),
+                (0, false) => DataType::Fragment(Fragment::Next),
+                (0, true) => DataType::Fragment(Fragment::End),
                 _ => err!("unknown opcode"),
             };
-            match (self.done, data_type) {
-                (true, DataType::Continue) => err!("expected data frame"),
-                (false, DataType::Text | DataType::Binary) => err!("expected fragment frame"),
-                _ => self.done = fin,
-            }
             let len = match len {
                 126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
                 127 => u64::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
@@ -251,19 +243,6 @@ fn on_close(msg: Vec<u8>) -> Event {
     }
 }
 
-impl<const SIDE: bool, Stream> fmt::Debug for WebSocket<SIDE, Stream>
-where
-    Stream: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("WebSocket")
-            .field("stream", &self.stream)
-            .field("max_payload_len", &self.max_payload_len)
-            .field("is_closed", &self.is_closed)
-            .finish()
-    }
-}
-
 impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
     #[inline]
     fn from(stream: IO) -> Self {
@@ -271,7 +250,6 @@ impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
             stream,
             max_payload_len: 16 * 1024 * 1024,
             is_closed: false,
-            done: true,
         }
     }
 }

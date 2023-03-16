@@ -17,19 +17,6 @@ pub fn apply_mask(data: &mut [u8], mask: [u8; 4]) {
     }
 }
 
-// macro_rules! cls_if_err {
-//     [$ws:expr, $code:expr] => ({
-//         if $ws.is_closed { err!(NotConnected, "read after close"); }
-//         match $code {
-//             Ok(val) => Ok(val),
-//             Err(err) => {
-//                 $ws.is_closed = true;
-//                 Err(err)
-//             }
-//         }
-//     });
-// }
-
 macro_rules! err {
     [$msg: expr] => {
         return Ok(Event::Error($msg))
@@ -43,6 +30,8 @@ macro_rules! io_err {
     };
 }
 pub(crate) use io_err;
+
+// ----------------------------------------------------------------------
 
 struct XorShift128Plus {
     x: u64,
@@ -63,6 +52,14 @@ static mut RNG: XorShift128Plus = XorShift128Plus {
     x: 0x_C01D,
     y: 0x_C0F1,
 };
+
+pub fn set_rand_seed() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let x = now.as_secs();
+    let y = now.subsec_nanos() as u64;
+    unsafe { RNG = XorShift128Plus { x, y } }
+}
 
 pub fn rand_num() -> u64 {
     unsafe { RNG.next() }

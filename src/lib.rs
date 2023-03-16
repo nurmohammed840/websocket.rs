@@ -6,16 +6,10 @@ mod message;
 mod utils;
 mod ws;
 
-#[cfg(feature = "http")]
-pub mod handshake;
-#[cfg(feature = "http")]
-pub mod http;
-pub use ws::client;
-
 pub use ws::WebSocket;
 
+use std::future::Future;
 use std::io::Result;
-use std::{fmt, future::Future};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use utils::*;
 
@@ -40,51 +34,42 @@ pub trait CloseFrame {
 
 /// It represent the type of data that is being sent over the WebSocket connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DataType {
+pub enum MessageType {
     /// `Text` data is represented as a sequence of Unicode characters encoded using UTF-8 encoding.
     Text,
     /// `Binary` data can be any sequence of bytes and is typically used for sending non-textual data, such as images, audio files etc...
     Binary,
-
-    /// The `done` and `ty` ([DataType]) fields work together to send a message split up into separate frames. This is called message fragmentation.
-    ///
-    /// ```txt
-    /// Client: done = true,  ty = Text,      data = "hello"
-    /// Server: (process complete message immediately) Hi.
-    /// Client: done = false, ty = Text,      data = "and a"
-    /// Server: (listening, new message containing text started)
-    /// Client: done = false, ty = Continue,  data = "happy new"
-    /// Server: (listening, payload concatenated to previous message)
-    /// Client: done = true,  ty = Continue,  data = "year!"
-    /// Server: (process complete message) Happy new year to you too!
-    /// ```
-    ///
-    /// ### Note
-    ///
-    /// - Control frames MAY be injected in the middle of a fragmented message.
-    /// - Control frames themselves MUST NOT be fragmented.
-    /// - An endpoint MUST be capable of handling control frames in the middle of a fragmented message.
-    Continue,
 }
 
-impl DataType {
-    #[inline]
-    ///
-    pub fn is_text(self) -> bool {
-        matches!(self, DataType::Text)
-    }
+/// Represents a fragment of a WebSocket message.
+#[derive(Debug, Clone, Copy)]
+pub enum Fragment {
+    /// Indicates the start of a new message fragment of the given [MessageType].
+    Start(MessageType),
+    /// Indicates the continuation of the current message fragment.
+    Next,
+    /// Indicates the end of the current message fragment.
+    End,
+}
+
+/// Data that is either complete or fragmented.
+#[derive(Debug, Clone, Copy)]
+pub enum DataType {
+    /// The message is split into fragments, each of which is sent as a separate
+    /// WebSocket message with the [Fragment] variant.
+    Fragment(Fragment),
+    /// A complete WebSocket message in a single transmission.
+    Complete(MessageType),
 }
 
 #[derive(Debug)]
 /// Represent a websocket event
 pub enum Event {
-    ///
+    /// Websocket data frame.
     Data {
-        ///
+        /// Represents WebSocket [DataType], Either complete or fragmented
         ty: DataType,
-        ///
-        done: bool,
-        ///
+        /// Payload, represented as bytes.
         data: Box<[u8]>,
     },
 

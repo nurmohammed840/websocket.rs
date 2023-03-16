@@ -19,11 +19,7 @@ where
     this.stream.read_exact(&mut data).await?;
     utils::apply_mask(&mut data, mask);
 
-    Ok(Event::Data {
-        ty,
-        done: this.done,
-        data,
-    })
+    Ok(Event::Data { ty, data })
 }
 
 def_ws!(SERVER, footer);

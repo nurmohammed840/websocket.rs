@@ -11,21 +11,8 @@ description = "WebSocket implementation for both client and server"
 
 exclude = ["/examples", "/autobahn", "/tests",  ".*"]
 
-[features]
-default = ["tls", "http"]
-tls = ["dep:tokio-rustls", "dep:webpki-roots", "http", "tokio/net"]
-http = ["dep:base64", "dep:sha-1"]
-
 [dependencies]
 tokio = { version = "1", default-features = false, features = ["io-util"] }
 
-# feature: tls
-tokio-rustls = { version = "0.23", default-features = false, optional = true }
-webpki-roots = { version = "0.22", optional = true }
-
-# feature: http 
-base64 = { version = "0.21", optional = true }
-sha-1 = { version = "0.10", optional = true }
-
 [dev-dependencies]
-tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread", "net"] }
