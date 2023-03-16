@@ -33,9 +33,9 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     /// # std::io::Result::<_>::Ok(()) };
     /// ```
     #[inline]
-    pub async fn send(&mut self, msg: impl Message) -> Result<()> {
+    pub async fn send(&mut self, data: impl Message) -> Result<()> {
         let mut bytes = vec![];
-        msg.encode::<SIDE>(&mut bytes);
+        data.encode::<SIDE>(&mut bytes);
         self.stream.write_all(&bytes).await
     }
 
