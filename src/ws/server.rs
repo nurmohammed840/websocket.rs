@@ -9,9 +9,13 @@ impl<IO> WebSocket<SERVER, IO> {
 }
 
 #[inline]
-async fn footer<IO>(this: &mut WebSocket<SERVER, IO>, ty: DataType, len: usize) -> Result<Event>
+pub async fn footer<const SIDE: bool, R>(
+    this: &mut WebSocket<SIDE, R>,
+    ty: DataType,
+    len: usize,
+) -> Result<Event>
 where
-    IO: Unpin + AsyncRead,
+    R: Unpin + AsyncRead,
 {
     let mask: [u8; 4] = read_buf(&mut this.stream).await?;
 
@@ -21,5 +25,3 @@ where
 
     Ok(Event::Data { ty, data })
 }
-
-def_ws!(SERVER, footer);

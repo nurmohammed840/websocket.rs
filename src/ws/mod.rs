@@ -85,12 +85,28 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     }
 }
 
-// enum Either<Data> {
-//     Data(Data),
-//     Event(Event),
-// }
-
-impl<const SIDE: bool, IO: Unpin + AsyncRead> WebSocket<SIDE, IO> {
+impl<const SIDE: bool, R> WebSocket<SIDE, R>
+where
+    R: Unpin + AsyncRead,
+{
+    /// reads [Event] from websocket stream.
+    #[inline]
+    pub async fn recv(&mut self) -> Result<Event> {
+        if self.is_closed {
+            io_err!(NotConnected, "read after close");
+        }
+        let event = if SIDE == SERVER {
+            self.header(server::footer).await
+        } else {
+            self.header(client::footer).await
+        };
+        if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
+            self.is_closed = true;
+        }
+        event
+    }
+}
+impl<const SIDE: bool, R: Unpin + AsyncRead> WebSocket<SIDE, R> {
     /// ### WebSocket Frame Header
     ///
     /// ```txt
@@ -253,26 +269,3 @@ impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
         }
     }
 }
-
-macro_rules! def_ws {
-    [$side: tt, $footer: tt] => {
-        impl<Reader> WebSocket<$side, Reader>
-        where
-            Reader: Unpin + AsyncRead,
-        {
-            /// reads [Event] from websocket stream.
-            #[inline]
-            pub async fn recv(&mut self) -> Result<Event> {
-                if self.is_closed {
-                    io_err!(NotConnected, "read after close");
-                }
-                let event = self.header($footer).await;
-                if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
-                    self.is_closed = true;
-                }
-                event
-            }
-        }
-    };
-}
-pub(self) use def_ws;

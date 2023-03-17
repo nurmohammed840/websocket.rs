@@ -43,7 +43,7 @@
 //     let mut buf = vec![];
 //     encode::<CLIENT>(&mut buf, true, 2, b"Hello, World");
 //     ws.stream.write_all(&buf).await?;
-    
+
 //     // let mut buf = vec![];
 //     // encode::<CLIENT>(&mut buf, false, 1, b"Hello, World");
 //     // ws.stream.write_all(&buf).await?;
@@ -62,7 +62,7 @@
 //     })
 // }
 
-// /// This function create a single threaded async runtime.  
+// /// This function create a single threaded async runtime.
 // pub fn block_on<F: std::future::Future>(future: F) -> F::Output {
 //     tokio::runtime::Builder::new_current_thread()
 //         .enable_all()

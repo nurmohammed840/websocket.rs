@@ -9,13 +9,15 @@ impl<IO> WebSocket<CLIENT, IO> {
 }
 
 #[inline]
-async fn footer<IO>(this: &mut WebSocket<CLIENT, IO>, ty: DataType, len: usize) -> Result<Event>
+pub async fn footer<const SIDE: bool, R>(
+    this: &mut WebSocket<SIDE, R>,
+    ty: DataType,
+    len: usize,
+) -> Result<Event>
 where
-    IO: Unpin + AsyncRead,
+    R: Unpin + AsyncRead,
 {
     let mut data = vec![0; len].into_boxed_slice();
     this.stream.read_exact(&mut data).await?;
     Ok(Event::Data { ty, data })
 }
-
-def_ws!(CLIENT, footer);
