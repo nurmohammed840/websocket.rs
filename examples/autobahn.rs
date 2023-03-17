@@ -3,7 +3,10 @@
 mod utils;
 
 use std::{io::Result, str};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::{TcpListener, TcpStream},
+};
 use web_socket::*;
 
 const HELP: &str = r#"
@@ -17,16 +20,17 @@ async fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("client" | "-c" | "--client") => client::main().await,
         Some("server" | "-s" | "--server") => server::main().await,
-        _ => println!("{HELP}")
+        _ => println!("{HELP}"),
     }
 }
 
 mod server {
     use super::*;
-    use hyper::{
-        body::Incoming, header::*, http::HeaderValue, server::conn::http1, service::service_fn,
-        upgrade, Request, Response, StatusCode,
-    };
+    use crate::utils::handshake;
+    use httparse::{parse_headers, Status, EMPTY_HEADER};
+    use std::collections::HashMap;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use utils::OptionExt;
 
     const ADDR: &str = "127.0.0.1:9002";
 
@@ -36,103 +40,88 @@ mod server {
 
         while let Ok((stream, addr)) = listener.accept().await {
             tokio::spawn(async move {
-                if let Err(err) = http1::Builder::new()
-                    .serve_connection(stream, service_fn(server_upgrade))
-                    .await
+                let mut stream = BufReader::new(stream);
+
+                // ----------------------- Parse HTTP --------------------
+
+                let data = stream.buffer();
+                let mut headers = [EMPTY_HEADER; 16];
+                let Ok(Status::Complete((amt, _))) = parse_headers(data, &mut headers) else { return  };
+                let headers: HashMap<_, _> = headers.iter().map(|h| (h.name, h.value)).collect();
+
+                // ---------------------- Handshake ---------------------
+
+                let key = headers.get("Sec-WebSocket-Key");
+                if !headers.get("Connection").contains(b"Upgrade")
+                    || !headers.get("Upgrade").contains(b"websocket")
+                    || key.is_none()
                 {
-                    println!("[{addr}] Error serving connection: {err:#?}");
+                    return println!("[{addr}] error: expected websocket upgrade request");
+                }
+                let response = handshake::response(key.unwrap(), [("x-server-type", "web-socket")]);
+                stream.write_all(response.as_bytes()).await.unwrap();
+                stream.consume(amt);
+
+                // --------------------------------------------------------
+
+                if let Err(err) = handle(WebSocket::server(stream)).await {
+                    println!("websocket error: {err:#?}")
                 }
             });
         }
-    }
-
-    async fn server_upgrade(mut req: Request<Incoming>) -> hyper::Result<Response<String>> {
-        let headers = req.headers();
-        let mut responce = Response::builder();
-
-        let sec_ws_key = headers.get(SEC_WEBSOCKET_KEY);
-        if !headers.contains_key(UPGRADE)
-            || !headers.contains_key(CONNECTION)
-            || sec_ws_key.is_none()
-        {
-            let response = responce
-                .status(StatusCode::BAD_REQUEST)
-                .body(String::from("expected websocket upgrade request"))
-                .unwrap();
-
-            return Ok(response);
-        }
-        let ws_accept = utils::handshake::accept_key_from(sec_ws_key.unwrap());
-
-        tokio::spawn(async move {
-            match upgrade::on(&mut req).await {
-                Ok(stream) => {
-                    if let Err(err) = handle(WebSocket::server(stream)).await {
-                        eprintln!("ws error: {err:#?}")
-                    }
-                }
-                Err(err) => eprintln!("upgrade error: {err:#?}"),
-            }
-        });
-        let responce = responce
-            .status(StatusCode::SWITCHING_PROTOCOLS)
-            .header(UPGRADE, "websocket")
-            .header(CONNECTION, "Upgrade")
-            .header(SEC_WEBSOCKET_ACCEPT, ws_accept)
-            .body(String::new())
-            .unwrap();
-
-        Ok(responce)
     }
 }
 
 mod client {
-    use super::*;
-    use hyper::client::conn::http1;
-    use tokio::net::TcpStream;
+    // use super::*;
+    // use hyper::client::conn::http1;
+    // use tokio::net::TcpStream;
 
-    const ADDR: &str = "localhost:9001";
-    const AGENT: &str = "agent=web-socket";
+    // const ADDR: &str = "localhost:9001";
+    // const AGENT: &str = "agent=web-socket";
 
-    async fn connect(
-        addr: &str,
-        path: &str,
-    ) -> Result<WebSocket<CLIENT, hyper::upgrade::Upgraded>> {
-        let stream = TcpStream::connect(addr).await?;
-        // let (mut sender, conn) = http1::handshake(stream).await.unwrap();
-        todo!()
-    }
+    // async fn connect(
+    //     addr: &str,
+    //     path: &str,
+    // ) -> Result<WebSocket<CLIENT, hyper::upgrade::Upgraded>> {
+    //     let stream = TcpStream::connect(addr).await?;
+    //     // let (mut sender, conn) = http1::handshake(stream).await.unwrap();
+    //     todo!()
+    // }
 
-    async fn get_case_count() -> Option<u32> {
-        let mut ws = connect(ADDR, "/getCaseCount").await.unwrap();
-        if let Event::Data { data, .. } = ws.recv().await.unwrap() {
-            return std::str::from_utf8(&data).ok()?.parse().ok();
-        }
-        None
-    }
+    // async fn get_case_count() -> Option<u32> {
+    //     let mut ws = connect(ADDR, "/getCaseCount").await.unwrap();
+    //     if let Event::Data { data, .. } = ws.recv().await.unwrap() {
+    //         return std::str::from_utf8(&data).ok()?.parse().ok();
+    //     }
+    //     None
+    // }
 
     pub async fn main() {
-        let total = get_case_count().await.expect("unable to get case count");
-        for case in 1..=total {
-            tokio::spawn(async move {
-                let mut ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
-                    .await
-                    .unwrap();
-                if let Err(err) = handle(ws).await {
-                    eprintln!("ws error: {err:#?}")
-                }
-            });
-        }
-        update_reports().await.expect("unable update reports");
+        // let total = get_case_count().await.expect("unable to get case count");
+        // for case in 1..=total {
+        //     tokio::spawn(async move {
+        //         let mut ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
+        //             .await
+        //             .unwrap();
+        //         if let Err(err) = handle(ws).await {
+        //             eprintln!("ws error: {err:#?}")
+        //         }
+        //     });
+        // }
+        // update_reports().await.expect("unable update reports");
     }
 
-    async fn update_reports() -> Result<()> {
-        let ws = connect(ADDR, &format!("/updateReports?{AGENT}")).await?;
-        ws.close(()).await
-    }
+    // async fn update_reports() -> Result<()> {
+    //     let ws = connect(ADDR, &format!("/updateReports?{AGENT}")).await?;
+    //     ws.close(()).await
+    // }
 }
 
-async fn handle<const SIDE: bool>(mut ws: WebSocket<SIDE, hyper::upgrade::Upgraded>) -> Result<()> {
+async fn handle<const SIDE: bool, R>(mut ws: WebSocket<SIDE, R>) -> Result<()>
+where
+    R: AsyncRead + AsyncWrite + Unpin,
+{
     let mut buf = Vec::with_capacity(4096);
     let mut msg_ty = MessageType::Text;
     loop {

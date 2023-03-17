@@ -34,8 +34,6 @@
 //! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
 
 use std::fmt;
-
-// use crate::http::Header;
 use sha1::{Digest, Sha1};
 
 /// WebSocket magic string used during the WebSocket handshake
@@ -46,7 +44,7 @@ pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 /// ### Example
 ///
 /// ```rust
-/// use web_socket::handshake::accept_key_from;
+/// use crate::utils::handshake::accept_key_from;
 /// assert_eq!(accept_key_from("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 /// ```
 #[inline]
@@ -76,7 +74,7 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
 ///     ""
 /// ];
 /// let field: Option<(&str, &str)> = None;
-/// assert_eq!(web_socket::handshake::response("dGhlIHNhbXBsZSBub25jZQ==", field), res.join("\r\n"));
+/// assert_eq!(crate::utils::handshake::response("dGhlIHNhbXBsZSBub25jZQ==", field), res.join("\r\n"));
 /// ```
 ///
 /// To get it, concatenate the client's `Sec-WebSocket-Key` and the string _"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"_ together (it's a [Magic string](https://en.wikipedia.org/wiki/Magic_string)), take the SHA-1 hash of the result, and return the base64 encoding of that hash.
@@ -95,10 +93,10 @@ pub fn accept_key_from(sec_ws_key: impl AsRef<[u8]>) -> String {
 ///
 /// - Regular HTTP status codes can be used only before the handshake. After the handshake succeeds, you have to use a different set of codes (defined in section 7.4 of the spec)
 pub fn response(
-    sec_ws_key: impl AsRef<str>,
+    sec_ws_key: impl AsRef<[u8]>,
     headers: impl IntoIterator<Item = impl Header>,
 ) -> String {
-    let key = accept_key_from(sec_ws_key.as_ref());
+    let key = accept_key_from(sec_ws_key);
     let headers: String = headers.into_iter().map(|f| Header::fmt(&f)).collect();
     format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {key}\r\n{headers}\r\n")
 }
@@ -108,7 +106,7 @@ pub fn response(
 /// ### Example
 ///
 /// ```no_run
-/// use web_socket::handshake::request;
+/// use crate::utils::handshake::request;
 /// let _ = request("example.com", "/path", [("key", "value")]);
 /// ```
 ///
