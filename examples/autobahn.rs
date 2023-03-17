@@ -4,10 +4,22 @@ mod utils;
 
 use std::{io::Result, str};
 use tokio::net::{TcpListener, TcpStream};
-use web_socket::{CloseCode, DataType, Event, Fragment, MessageType, WebSocket, SERVER};
+use web_socket::*;
+
+const HELP: &str = r#"
+USAGE:
+    cargo run --example autobahn -- server
+    cargo run --example autobahn -- client
+"#;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() {}
+async fn main() {
+    match std::env::args().nth(1).as_deref() {
+        Some("client" | "-c" | "--client") => client::main().await,
+        Some("server" | "-s" | "--server") => server::main().await,
+        _ => println!("{HELP}")
+    }
+}
 
 mod server {
     use super::*;
@@ -18,7 +30,7 @@ mod server {
 
     const ADDR: &str = "127.0.0.1:9002";
 
-    async fn main() {
+    pub async fn main() {
         let listener = TcpListener::bind(ADDR).await.unwrap();
         println!("Listening on: {ADDR}");
 
@@ -79,10 +91,44 @@ mod client {
     use hyper::client::conn::http1;
     use tokio::net::TcpStream;
 
-    async fn connect(addr: &str, path: &str) -> Result<()> {
+    const ADDR: &str = "localhost:9001";
+    const AGENT: &str = "agent=web-socket";
+
+    async fn connect(
+        addr: &str,
+        path: &str,
+    ) -> Result<WebSocket<CLIENT, hyper::upgrade::Upgraded>> {
         let stream = TcpStream::connect(addr).await?;
         // let (mut sender, conn) = http1::handshake(stream).await.unwrap();
-        Ok(())
+        todo!()
+    }
+
+    async fn get_case_count() -> Option<u32> {
+        let mut ws = connect(ADDR, "/getCaseCount").await.unwrap();
+        if let Event::Data { data, .. } = ws.recv().await.unwrap() {
+            return std::str::from_utf8(&data).ok()?.parse().ok();
+        }
+        None
+    }
+
+    pub async fn main() {
+        let total = get_case_count().await.expect("unable to get case count");
+        for case in 1..=total {
+            tokio::spawn(async move {
+                let mut ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
+                    .await
+                    .unwrap();
+                if let Err(err) = handle(ws).await {
+                    eprintln!("ws error: {err:#?}")
+                }
+            });
+        }
+        update_reports().await.expect("unable update reports");
+    }
+
+    async fn update_reports() -> Result<()> {
+        let ws = connect(ADDR, &format!("/updateReports?{AGENT}")).await?;
+        ws.close(()).await
     }
 }
 
