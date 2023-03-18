@@ -44,7 +44,7 @@ mod server {
 
                 // ----------------------- Parse HTTP --------------------
 
-                let data = stream.buffer();
+                let data = stream.fill_buf().await.unwrap();
                 let mut headers = [EMPTY_HEADER; 16];
                 let Ok(Status::Complete((amt, _))) = parse_headers(data, &mut headers) else { return  };
                 let headers: HashMap<_, _> = headers.iter().map(|h| (h.name, h.value)).collect();
@@ -65,7 +65,7 @@ mod server {
                 // --------------------------------------------------------
 
                 if let Err(err) = handle(WebSocket::server(stream)).await {
-                    println!("websocket error: {err:#?}")
+                    println!("ws error: {err:#?}")
                 }
             });
         }
@@ -73,49 +73,40 @@ mod server {
 }
 
 mod client {
-    // use super::*;
-    // use hyper::client::conn::http1;
-    // use tokio::net::TcpStream;
+    use super::*;
+    use crate::utils::connect;
 
-    // const ADDR: &str = "localhost:9001";
-    // const AGENT: &str = "agent=web-socket";
+    const ADDR: &str = "localhost:9001";
+    const AGENT: &str = "agent=web-socket";
 
-    // async fn connect(
-    //     addr: &str,
-    //     path: &str,
-    // ) -> Result<WebSocket<CLIENT, hyper::upgrade::Upgraded>> {
-    //     let stream = TcpStream::connect(addr).await?;
-    //     // let (mut sender, conn) = http1::handshake(stream).await.unwrap();
-    //     todo!()
-    // }
-
-    // async fn get_case_count() -> Option<u32> {
-    //     let mut ws = connect(ADDR, "/getCaseCount").await.unwrap();
-    //     if let Event::Data { data, .. } = ws.recv().await.unwrap() {
-    //         return std::str::from_utf8(&data).ok()?.parse().ok();
-    //     }
-    //     None
-    // }
-
-    pub async fn main() {
-        // let total = get_case_count().await.expect("unable to get case count");
-        // for case in 1..=total {
-        //     tokio::spawn(async move {
-        //         let mut ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
-        //             .await
-        //             .unwrap();
-        //         if let Err(err) = handle(ws).await {
-        //             eprintln!("ws error: {err:#?}")
-        //         }
-        //     });
-        // }
-        // update_reports().await.expect("unable update reports");
+    async fn get_case_count() -> Option<u32> {
+        let mut ws = connect(ADDR, "/getCaseCount").await.unwrap();
+        if let Event::Data { data, .. } = ws.recv().await.unwrap() {
+            return std::str::from_utf8(&data).ok()?.parse().ok();
+        }
+        None
     }
 
-    // async fn update_reports() -> Result<()> {
-    //     let ws = connect(ADDR, &format!("/updateReports?{AGENT}")).await?;
-    //     ws.close(()).await
-    // }
+    pub async fn main() {
+        let total = get_case_count().await.expect("unable to get case count");
+        for case in 1..=total {
+            tokio::spawn(async move {
+                let mut ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
+                    .await
+                    .unwrap();
+
+                if let Err(err) = handle(ws).await {
+                    eprintln!("ws error: {err:#?}")
+                }
+            });
+        }
+        update_reports().await.expect("unable update reports");
+    }
+
+    async fn update_reports() -> Result<()> {
+        let ws = connect(ADDR, &format!("/updateReports?{AGENT}")).await?;
+        ws.close(()).await
+    }
 }
 
 async fn handle<const SIDE: bool, R>(mut ws: WebSocket<SIDE, R>) -> Result<()>
