@@ -1,3 +1,6 @@
+#![allow(warnings)]
+pub mod handshake;
+
 use httparse::{parse_headers, EMPTY_HEADER};
 use web_socket::{WebSocket, CLIENT};
 use std::{collections::HashMap, io::Result};
@@ -6,23 +9,14 @@ use tokio::{
     net::TcpStream,
 };
 
-pub mod handshake;
 
-pub trait OptionExt<T> {
-    fn contains<U>(&self, x: U) -> bool
-    where
-        U: PartialEq<T>;
-}
-
-impl<T> OptionExt<T> for Option<T> {
-    fn contains<U>(&self, x: U) -> bool
-    where
-        U: PartialEq<T>,
-    {
-        match self {
-            Some(y) => x.eq(y),
-            None => false,
-        }
+pub fn contains<T, U>(opt: &Option<T>, val: U) -> bool
+where
+    U: PartialEq<T>,
+{
+    match opt {
+        Some(y) => val.eq(y),
+        None => false,
     }
 }
 

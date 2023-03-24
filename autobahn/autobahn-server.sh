@@ -11,7 +11,7 @@ function cleanup() {
 }
 trap cleanup TERM EXIT
 
-cargo run --release --example autobahn-server & WSSERVER_PID=$!
+cargo run --release --example autobahn -- server & WSSERVER_PID=$!
 sleep 5
 
 docker run --rm \

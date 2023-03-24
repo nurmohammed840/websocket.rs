@@ -42,7 +42,7 @@ pub enum MessageType {
 }
 
 /// Represents a fragment of a WebSocket message.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fragment {
     /// Indicates the start of a new message fragment of the given [MessageType].
     Start(MessageType),
@@ -53,7 +53,7 @@ pub enum Fragment {
 }
 
 /// Data that is either complete or fragmented.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataType {
     /// The message is split into fragments, each of which is sent as a separate
     /// WebSocket message with the [Fragment] variant.

@@ -1,11 +1,9 @@
-#![allow(warnings)]
-
 mod utils;
 
 use std::{io::Result, str};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
 };
 use web_socket::*;
 
@@ -30,7 +28,6 @@ mod server {
     use httparse::{parse_headers, Status, EMPTY_HEADER};
     use std::collections::HashMap;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use utils::OptionExt;
 
     const ADDR: &str = "127.0.0.1:9002";
 
@@ -52,8 +49,8 @@ mod server {
                 // ---------------------- Handshake ---------------------
 
                 let key = headers.get("Sec-WebSocket-Key");
-                if !headers.get("Connection").contains(b"Upgrade")
-                    || !headers.get("Upgrade").contains(b"websocket")
+                if !utils::contains(&headers.get("Connection"), b"Upgrade")
+                    || !utils::contains(&headers.get("Upgrade"), b"websocket")
                     || key.is_none()
                 {
                     return println!("[{addr}] error: expected websocket upgrade request");
@@ -91,7 +88,7 @@ mod client {
         let total = get_case_count().await.expect("unable to get case count");
         for case in 1..=total {
             tokio::spawn(async move {
-                let mut ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
+                let ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}"))
                     .await
                     .unwrap();
 
