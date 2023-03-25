@@ -1,5 +1,5 @@
-mod utils;
 mod answer;
+mod utils;
 
 use tokio::{io::*, net::TcpListener};
 use utils::Http;
@@ -43,4 +43,3 @@ async fn main() -> Result<()> {
         });
     }
 }
-

@@ -15,23 +15,7 @@ pub struct WebSocket<const SIDE: bool, Stream> {
 }
 
 impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
-    /// Send message to a endpoint by writing it to a WebSocket stream.
-    ///
-    /// ### Example
-    ///
-    /// ```no_run
-    /// use web_socket::{client::WS, CloseCode, Event};
-    /// # async {
-    ///
-    /// let mut ws = WS::connect("localhost:80", "/").await?;
-    /// ws.send("Text Message").await?;
-    /// ws.send(b"Binary Data").await?;
-    ///
-    /// // You can also send control frame.
-    /// ws.send(Event::Ping(b"Hello!")).await?;
-    /// ws.send(Event::Pong(b"Hello!")).await?;
-    /// # std::io::Result::<_>::Ok(()) };
-    /// ```
+    /// Send message to a endpoint.
     #[inline]
     pub async fn send(&mut self, data: impl Message) -> Result<()> {
         let mut bytes = vec![];
@@ -62,17 +46,6 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     }
 
     /// - The Close frame MAY contain a body that indicates a reason for closing.
-    ///
-    /// ### Example
-    ///
-    /// ```no_run
-    /// use web_socket::{client::WS, CloseCode};
-    /// # async {
-    ///
-    /// let ws = WS::connect("localhost:80", "/").await?;
-    /// ws.close((CloseCode::Normal, "Closed successfully")).await?;
-    /// # std::io::Result::<_>::Ok(()) };
-    /// ```
     pub async fn close<T>(mut self, reason: T) -> Result<()>
     where
         T: CloseFrame,

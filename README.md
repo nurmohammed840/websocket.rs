@@ -18,28 +18,36 @@ Or add this to your `Cargo.toml` file.
 web-socket = "0.5"
 ```
 
-### Ping-Pong Example
+### Example
 
 You can run this example with: `cargo run --example minimal`
 
 ```rust no_run
-use std::io::Result;
-use web_socket::{client::WSS, DataType};
+use tokio::io::*;
+use web_socket::*;
 
-async fn example() -> Result<()> {
-    let mut ws = WSS::connect("ws.ifelse.io:443", "/").await?;
+async fn example<IO>(mut ws: WebSocket<CLIENT, IO>) -> Result<()>
+where
+    IO: Unpin + AsyncRead + AsyncWrite,
+{
+    let _ = ws.recv().await?; // ignore message: Request served by 4338e324
     for _ in 0..3 {
         ws.send("Copy Cat!").await?;
 
-        let mut data = ws.recv().await?;
-        assert_eq!(data.ty, DataType::Text);
-
-        let mut buf = vec![];
-        data.read_to_end(&mut buf).await?;
-        println!("Text: {:?}", String::from_utf8(buf));
+        match ws.recv().await? {
+            Event::Data { ty, data } => {
+                assert_eq!(ty, DataType::Complete(MessageType::Text));
+                assert_eq!(&*data, b"Copy Cat!");
+            }
+            Event::Ping(data) => ws.send_ping(data).await?,
+            Event::Pong(..) => {}
+            Event::Error(..) => return ws.close(CloseCode::ProtocolError).await,
+            Event::Close { .. } => return ws.close(()).await,
+        }
     }
-    Ok(())
+    ws.close("bye!").await
 }
+
 ```
 
 For more examples, see [./examples](https://github.com/nurmohammed840/websocket.rs/tree/master/examples) directory.
