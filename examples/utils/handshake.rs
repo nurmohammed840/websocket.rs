@@ -33,8 +33,8 @@
 //! -  Request may include any other header fields, for example, cookies and/or authentication-related header fields.
 //! -  Optionally, `Origin` header field.  This header field is sent by all browser clients.
 
-use std::fmt;
 use sha1::{Digest, Sha1};
+use std::fmt;
 
 /// WebSocket magic string used during the WebSocket handshake
 pub const MAGIC_STRING: &[u8; 36] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";

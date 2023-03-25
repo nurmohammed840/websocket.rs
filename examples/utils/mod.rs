@@ -1,14 +1,12 @@
 #![allow(warnings)]
 pub mod handshake;
 
-use httparse::{parse_headers, EMPTY_HEADER};
-use web_socket::{WebSocket, CLIENT};
 use std::{collections::HashMap, io::Result};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
 };
-
+use web_socket::{WebSocket, CLIENT};
 
 pub fn contains<T, U>(opt: &Option<T>, val: U) -> bool
 where
@@ -20,36 +18,64 @@ where
     }
 }
 
+#[derive(Debug)]
+pub struct Http {
+    prefix: String,
+    headers: HashMap<String, String>,
+}
+
+impl std::ops::Deref for Http {
+    type Target = HashMap<String, String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.headers
+    }
+}
+
+impl std::ops::DerefMut for Http {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.headers
+    }
+}
+
+impl Http {
+    pub async fn parse<IO>(reader: &mut IO) -> Result<Self>
+    where
+        IO: Unpin + AsyncBufRead,
+    {
+        let mut lines = reader.lines();
+
+        let prefix = lines.next_line().await?.unwrap();
+        let mut headers = HashMap::new();
+
+        while let Some(line) = lines.next_line().await? {
+            if line == "" {
+                break;
+            }
+            let (key, value) = line.split_once(":").unwrap();
+            headers.insert(key.to_ascii_lowercase(), value.trim_start().into());
+        }
+        Ok(Self { prefix, headers })
+    }
+}
+
 pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<CLIENT, BufReader<TcpStream>>> {
     let mut stream = BufReader::new(TcpStream::connect(addr).await?);
-
-    // -----------------------------------------------------------
 
     let (req, sec_key) = handshake::request(addr, path, [("", "")]);
     stream.write_all(req.as_bytes()).await?;
 
-    // -----------------------------------------------------------
-
-    let data = stream.fill_buf().await?;
-
-    if !data.starts_with(b"HTTP/1.1 101 Switching Protocols") {
+    let http = Http::parse(&mut stream).await?;
+    if !http.prefix.starts_with("HTTP/1.1 101 Switching Protocols") {
         panic!("expected upgrade connection");
     }
-
-    let mut headers = [EMPTY_HEADER; 16];
-    let (amt, _) = parse_headers(data, &mut headers).unwrap().unwrap();
-    let headers: HashMap<_, _> = headers.iter().map(|h| (h.name, h.value)).collect();
-
-    // -----------------------------------------------------------
-
-    if headers
-        .get("Sec-WebSocket-Accept")
-        .expect("couldn't get `Accept-Key` from http response")
-        .ne(&handshake::accept_key_from(sec_key).as_bytes())
+    if http
+        .get("sec-websocket-accept")
+        .expect("couldn't get `sec-websocket-accept` from http response")
+        .ne(&handshake::accept_key_from(sec_key))
     {
         panic!("invalid websocket accept key");
     }
-    stream.consume(amt);
-    
+
     Ok(WebSocket::client(stream))
 }
