@@ -40,7 +40,7 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
     }
 
     #[inline]
-    ///
+    /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
     pub async fn send_ping(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
         let mut bytes = vec![];
         message::encode::<SIDE>(&mut bytes, true, 9, data.as_ref());
@@ -106,6 +106,7 @@ where
         event
     }
 }
+
 impl<const SIDE: bool, R: Unpin + AsyncRead> WebSocket<SIDE, R> {
     /// ### WebSocket Frame Header
     ///

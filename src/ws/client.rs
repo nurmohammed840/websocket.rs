@@ -3,7 +3,7 @@ use super::*;
 impl<IO> WebSocket<CLIENT, IO> {
     /// Create a new websocket client instance.
     pub fn client(stream: IO) -> Self {
-        utils::set_rand_seed();
+        utils::set_random_seed();
         Self::from(stream)
     }
 }

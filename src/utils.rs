@@ -53,7 +53,7 @@ static mut RNG: XorShift128Plus = XorShift128Plus {
     y: 0x_C0F1,
 };
 
-pub fn set_rand_seed() {
+pub fn set_random_seed() {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let x = now.as_secs();
