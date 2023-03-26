@@ -24,16 +24,12 @@ async fn main() -> Result<()> {
         let mut stream = BufReader::new(stream);
         let http = Http::parse(&mut stream).await?;
 
-        let key = http.get("sec-websocket-key");
-        if !utils::contains(&http.get("connection"), "Upgrade")
-            || !utils::contains(&http.get("upgrade"), "websocket")
-            || key.is_none()
-        {
+        let Some(key) = get_sec_key(&http) else {
             panic!("[{addr}] error: expected websocket upgrade request");
-        }
+        };
 
         stream
-            .write_all(handshake::response(key.unwrap(), [("x-agent", "web-socket")]).as_bytes())
+            .write_all(handshake::response(key, [("x-agent", "web-socket")]).as_bytes())
             .await?;
 
         tokio::spawn(async {
@@ -42,4 +38,13 @@ async fn main() -> Result<()> {
             }
         });
     }
+}
+
+fn get_sec_key(http: &Http) -> Option<&String> {
+    if !http.get("connection")?.eq_ignore_ascii_case("upgrade")
+        || !http.get("upgrade")?.eq_ignore_ascii_case("websocket") 
+    {
+        return None;
+    }
+    http.get("sec-websocket-key")
 }

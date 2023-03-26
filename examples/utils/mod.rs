@@ -8,14 +8,10 @@ use tokio::{
 };
 use web_socket::{WebSocket, CLIENT};
 
-pub fn contains<T, U>(opt: &Option<T>, val: U) -> bool
-where
-    U: PartialEq<T>,
-{
-    match opt {
-        Some(y) => val.eq(y),
-        None => false,
-    }
+macro_rules! io_err {
+    [$kind: ident, $msg: expr] => {
+        return Err(std::io::Error::new(std::io::ErrorKind::$kind, $msg))
+    };
 }
 
 #[derive(Debug)]
@@ -66,15 +62,16 @@ pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<CLIENT, BufRead
     stream.write_all(req.as_bytes()).await?;
 
     let http = Http::parse(&mut stream).await?;
+    
     if !http.prefix.starts_with("HTTP/1.1 101 Switching Protocols") {
-        panic!("expected upgrade connection");
+        io_err!(InvalidData, "expected upgrade connection");
     }
     if http
         .get("sec-websocket-accept")
         .expect("couldn't get `sec-websocket-accept` from http response")
         .ne(&handshake::accept_key_from(sec_key))
     {
-        panic!("invalid websocket accept key");
+        io_err!(InvalidData, "invalid websocket accept key");
     }
 
     Ok(WebSocket::client(stream))

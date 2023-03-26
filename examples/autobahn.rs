@@ -9,7 +9,7 @@ use web_socket::*;
 const ADDR: &str = "localhost:9001";
 const AGENT: &str = "agent=web-socket";
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> Result<()> {
     let total = get_case_count().await.expect("unable to get case count");
     for case in 1..=total {
@@ -24,11 +24,10 @@ async fn main() -> Result<()> {
 }
 
 async fn get_case_count() -> Option<u32> {
-    let mut ws = connect(ADDR, "/getCaseCount").await.unwrap();
-    if let Event::Data { data, .. } = ws.recv().await.unwrap() {
-        return std::str::from_utf8(&data).ok()?.parse().ok();
-    }
-    None
+    let Ok(Event::Data { data, .. }) = connect(ADDR, "/getCaseCount").await.ok()?.recv().await else {
+        return None
+    };
+    std::str::from_utf8(&data).ok()?.parse().ok()
 }
 
 async fn update_reports() -> Result<()> {

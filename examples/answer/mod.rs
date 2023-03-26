@@ -7,22 +7,30 @@ where
     IO: AsyncRead + AsyncWrite + Unpin,
 {
     let mut buf = Vec::with_capacity(4096);
-    let mut msg_ty = MessageType::Text;
+    let mut frag_ty: Option<MessageType> = None;
     loop {
         match ws.recv().await? {
             Event::Data { ty, data } => match ty {
                 DataType::Fragment(chunk) => match chunk {
                     Fragment::Start(ty) => {
-                        msg_ty = ty;
+                        if frag_ty.replace(ty).is_some() {
+                            return Ok(());
+                        }
                         buf.extend_from_slice(&data);
                     }
-                    Fragment::Next => buf.extend_from_slice(&data),
-                    Fragment::End => {
+                    Fragment::Next => {
+                        if frag_ty.is_none() {
+                            return Ok(());
+                        }
                         buf.extend_from_slice(&data);
-                        match msg_ty {
+                    }
+                    Fragment::End => {
+                        let Some(ty) = frag_ty.take() else { return Ok(()) };
+                        buf.extend_from_slice(&data);
+                        match ty {
                             MessageType::Text => match str::from_utf8(&buf) {
                                 Ok(msg) => ws.send(msg).await?,
-                                Err(_) => return ws.close(()).await,
+                                Err(_) => return Ok(()),
                             },
                             MessageType::Binary => ws.send(&*buf).await?,
                         }
@@ -30,13 +38,14 @@ where
                     }
                 },
                 DataType::Complete(ty) => {
-                    if !buf.is_empty() {
-                        // ...
+                    if frag_ty.is_some() {
+                        // expected fragment, but got data
+                        return Ok(());
                     }
                     match ty {
                         MessageType::Text => match str::from_utf8(&data) {
                             Ok(msg) => ws.send(msg).await?,
-                            Err(_) => return ws.close(()).await,
+                            Err(_) => return Ok(()),
                         },
                         MessageType::Binary => ws.send(&*data).await?,
                     }
