@@ -1,7 +1,7 @@
 # Web-Socket
 
-This library provide [WebSocket](https://en.wikipedia.org/wiki/WebSocket) implementation for both client and server. It provides a simple, modern and 
-intuitive WebSocket interface.
+This library provide a simple, modern and 
+intuitive [WebSocket](https://en.wikipedia.org/wiki/WebSocket) implementation for both client and server.
 
 ## Usage
 

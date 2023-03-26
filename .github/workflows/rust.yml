@@ -1,24 +1,24 @@
-# name: Rust
+name: Rust
 
-# on:
-#   push:
-#     branches: [ master ]
-#   pull_request:
-#     branches: [ master ]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-# env:
-#   CARGO_TERM_COLOR: always
+env:
+  CARGO_TERM_COLOR: always
 
-# jobs:
-#   build:
+jobs:
+  build:
 
-#     runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
-#     steps:
-#     - uses: actions/checkout@v3
+    steps:
+    - uses: actions/checkout@v3
     
-#     - name: Run clippy
-#       run: cargo clippy
+    - name: Run clippy
+      run: cargo clippy
       
-#     - name: Run tests
-#       run: cargo test
+    - name: Run tests
+      run: cargo test
