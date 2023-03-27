@@ -1,17 +1,10 @@
-# Web-Socket
+## Introduction
 
-This library provide a simple, modern and 
-intuitive [WebSocket](https://en.wikipedia.org/wiki/WebSocket) implementation for both client and server.
+This library is an implementation of the [WebSocket](https://en.wikipedia.org/wiki/WebSocket) protocol, which provides a way for two-way communication between a client and server over a single TCP connection. This library provides an easy-to-use, modern, and intuitive WebSocket implementation for both client and server-side applications.
 
-## Usage
+## Installation
 
-Run:
-
-```txt
-cargo add web-socket
-```
-
-Or add this to your `Cargo.toml` file.
+To use this library, add it as a dependency to your Rust project by adding the following line to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
@@ -47,12 +40,11 @@ where
     }
     ws.close("bye!").await
 }
-
 ```
 
 For more examples, see [./examples](https://github.com/nurmohammed840/websocket.rs/tree/master/examples) directory.
 
-It passed every test of the [autobahn testsuite](https://github.com/crossbario/autobahn-testsuite)
+It passed all test of the [autobahn testsuite](https://github.com/crossbario/autobahn-testsuite)
 
 #### License
 

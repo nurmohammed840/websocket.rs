@@ -1,12 +1,11 @@
 Run autobahn test suite:
 
 ```
-cd ./autobahn
-bash autobahn-client.sh
+bash ./autobahn/autobahn-client.sh
 ```
 
 View result:
 
 ```
-npx serve ./client
+npx serve ./autobahn/client
 ```

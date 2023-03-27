@@ -9,16 +9,11 @@ use web_socket::*;
 const ADDR: &str = "localhost:9001";
 const AGENT: &str = "agent=web-socket";
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let total = get_case_count().await.expect("unable to get case count");
     for case in 1..=total {
-        let ws = connect(ADDR, &format!("/runCase?case={case}&{AGENT}")).await?;
-        tokio::spawn(async move {
-            if let Err(err) = echo(ws).await {
-                eprintln!("ws error: {err:#?}")
-            }
-        });
+        let _ = echo(connect(ADDR, &format!("/runCase?case={case}&{AGENT}")).await?).await;
     }
     update_reports().await
 }

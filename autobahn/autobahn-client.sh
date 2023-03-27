@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Author michael <themichaeleden@gmail.com>
 set -euo pipefail
 set -x
 SOURCE_DIR=$(readlink -f "${BASH_SOURCE[0]}")
@@ -21,4 +20,5 @@ docker run -d --rm \
     wstest -m fuzzingserver -s 'autobahn/fuzzingserver.json'
 
 sleep 3
+
 cargo run --release --example autobahn

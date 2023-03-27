@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Author michael <themichaeleden@gmail.com>
 set -euo pipefail
 set -x
 SOURCE_DIR=$(readlink -f "${BASH_SOURCE[0]}")
@@ -11,8 +10,10 @@ function cleanup() {
 }
 trap cleanup TERM EXIT
 
+cargo build --release --example echo
 cargo run --release --example echo -- 127.0.0.1:9002 & WSSERVER_PID=$!
-sleep 5
+
+sleep 3
 
 docker run --rm \
     -v "${PWD}/autobahn:/autobahn" \
