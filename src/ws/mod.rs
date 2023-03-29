@@ -73,9 +73,9 @@ where
         } else {
             self.header(client::footer).await
         };
-        // if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
-        //     self.is_closed = true;
-        // }
+        if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
+            self.is_closed = true;
+        }
         event
     }
 }
