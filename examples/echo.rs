@@ -11,7 +11,7 @@ use crate::utils::handshake;
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let Some(mut addr) = std::env::args().nth(1)  else {
-        return Ok(println!(""));
+        return Ok(println!("Try: cargo run --example echo -- 127.0.0.1:8080"));
     };
     if !addr.contains(":") {
         addr.push_str(":8080");
@@ -33,16 +33,14 @@ async fn main() -> Result<()> {
             .await?;
 
         tokio::spawn(async {
-            if let Err(err) = answer::echo(WebSocket::server(stream)).await {
-                println!("ws error: {err:#?}")
-            }
+            let _ = answer::echo(WebSocket::server(stream)).await;
         });
     }
 }
 
 fn get_sec_key(http: &Http) -> Option<&String> {
     if !http.get("connection")?.eq_ignore_ascii_case("upgrade")
-        || !http.get("upgrade")?.eq_ignore_ascii_case("websocket") 
+        || !http.get("upgrade")?.eq_ignore_ascii_case("websocket")
     {
         return None;
     }
