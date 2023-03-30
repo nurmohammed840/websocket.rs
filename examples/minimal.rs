@@ -23,7 +23,7 @@ where
                 assert_eq!(ty, DataType::Complete(MessageType::Text));
                 assert_eq!(&*data, b"Copy Cat!");
             }
-            Event::Ping(data) => ws.send_ping(data).await?,
+            Event::Ping(data) => ws.send(Pong(data)).await?,
             Event::Pong(..) => {}
             Event::Error(..) => return ws.close(CloseCode::ProtocolError).await,
             Event::Close { .. } => return ws.close(()).await,

@@ -62,7 +62,7 @@ pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<CLIENT, BufRead
     stream.write_all(req.as_bytes()).await?;
 
     let http = Http::parse(&mut stream).await?;
-    
+
     if !http.prefix.starts_with("HTTP/1.1 101 Switching Protocols") {
         io_err!(InvalidData, "expected upgrade connection");
     }

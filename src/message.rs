@@ -1,7 +1,10 @@
-use rand::Rng;
 use crate::*;
+use rand::Rng;
 
-impl<T: Message + ?Sized> Message for &T {
+impl<T> Message for &T
+where
+    T: Message + ?Sized,
+{
     #[inline]
     fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
         T::encode::<SIDE>(self, writer)
@@ -28,6 +31,28 @@ impl<const N: usize> Message for [u8; N] {
         encode::<SIDE>(writer, true, 2, self);
     }
 }
+
+impl<T> Message for Ping<T>
+where
+    T: AsRef<[u8]>,
+{
+    #[inline]
+    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
+        message::encode::<SIDE>(writer, true, 9, self.0.as_ref());
+    }
+}
+
+impl<T> Message for Pong<T>
+where
+    T: AsRef<[u8]>,
+{
+    #[inline]
+    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>) {
+        message::encode::<SIDE>(writer, true, 10, self.0.as_ref());
+    }
+}
+
+// ------------------------------------------------------------------------------
 
 impl CloseFrame for () {
     type Frame = Box<[u8]>;

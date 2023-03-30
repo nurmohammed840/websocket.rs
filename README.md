@@ -1,6 +1,6 @@
 ## Introduction
 
-This library is an implementation of the [WebSocket](https://en.wikipedia.org/wiki/WebSocket) protocol, which provides a way for two-way communication between a client and server over a single TCP connection. This library provides an easy-to-use, modern, and intuitive WebSocket implementation for both client and server-side applications.
+This library is an implementation of the [WebSocket](https://en.wikipedia.org/wiki/WebSocket) protocol, which provides a way for two-way communication between a client and server over a single TCP connection. This library provides an easy-to-use, modern, intuitive WebSocket implementation for both client and server-side applications.
 
 ## Installation
 
@@ -32,7 +32,7 @@ where
                 assert_eq!(ty, DataType::Complete(MessageType::Text));
                 assert_eq!(&*data, b"Copy Cat!");
             }
-            Event::Ping(data) => ws.send_ping(data).await?,
+            Event::Ping(data) => ws.send(Pong(data)).await?,
             Event::Pong(..) => {}
             Event::Error(..) => return ws.close(CloseCode::ProtocolError).await,
             Event::Close { .. } => return ws.close(()).await,

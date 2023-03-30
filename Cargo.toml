@@ -1,6 +1,6 @@
 [package]
 name = "web-socket"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 
 license = "Apache-2.0"
@@ -12,7 +12,7 @@ description = "WebSocket implementation for both client and server"
 exclude = ["/examples", "/autobahn", "/tests",  ".*"]
 
 [dependencies]
-rand = "0.8.5"
+rand = "0.8"
 tokio = { version = "1", default-features = false, features = ["io-util"] }
 
 [dev-dependencies]

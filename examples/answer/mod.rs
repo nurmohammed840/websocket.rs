@@ -31,7 +31,7 @@ where
                     send_msg(&mut ws, ty, &data).await?;
                 }
             },
-            Event::Ping(data) => ws.send_pong(data).await?,
+            Event::Ping(data) => ws.send(Pong(data)).await?,
             Event::Pong(_) => {}
             Event::Error(_) => return ws.close(CloseCode::ProtocolError).await,
             Event::Close { .. } => return ws.close(()).await,

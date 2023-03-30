@@ -2,6 +2,7 @@ use super::*;
 
 impl<IO> WebSocket<CLIENT, IO> {
     /// Create a new websocket client instance.
+    #[inline]
     pub fn client(stream: IO) -> Self {
         Self::from(stream)
     }

@@ -1,5 +1,6 @@
 #![doc(html_logo_url = "https://cdn.worldvectorlogo.com/logos/websocket.svg")]
 #![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 
 mod message;
 mod utils;
@@ -83,7 +84,7 @@ pub enum Event {
     /// If an endpoint receives a Ping frame and has not yet sent Pong frame(s) in response to previous Ping frame(s), the endpoint MAY
     /// elect to send a Pong frame for only the most recently processed Ping frame.
     ///
-    ///  A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
+    /// A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
     Pong(Box<[u8]>),
 
     /// represents the websocket error message.
@@ -97,6 +98,30 @@ pub enum Event {
         reason: Box<str>,
     },
 }
+
+/// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
+///
+/// It is used to send ping frame.
+///
+/// ### Example
+///
+/// ```no_run
+/// # use web_socket::*;
+/// # async fn get_stream() -> tokio::net::TcpStream { todo!() }
+/// # async {
+/// let mut ws = WebSocket::client(get_stream().await);
+/// ws.send(Ping("Hello!")).await;
+/// # };
+/// ```
+#[derive(Debug)]
+pub struct Ping<T>(pub T);
+
+/// A Pong frame sent in response to a Ping frame must have identical
+/// "Application data" as found in the message body of the Ping frame being replied to.
+///
+/// A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
+#[derive(Debug)]
+pub struct Pong<T>(pub T);
 
 /// When closing an established connection an endpoint MAY indicate a reason for closure.
 #[derive(Debug, Clone, Copy)]
@@ -159,5 +184,11 @@ impl From<u16> for CloseCode {
             1015 => CloseCode::TLSHandshake,
             _ => CloseCode::PolicyViolation,
         }
+    }
+}
+
+impl PartialEq<u16> for CloseCode {
+    fn eq(&self, other: &u16) -> bool {
+        (*self as u16) == *other
     }
 }

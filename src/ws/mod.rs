@@ -9,33 +9,23 @@ mod server;
 pub struct WebSocket<const SIDE: bool, Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
-    /// maximum allowed payload length in bytes
+
+    /// Maximum allowed payload length in bytes.
+    ///
+    /// Default: 16 MB
     pub max_payload_len: usize,
     is_closed: bool,
 }
 
-impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
+impl<const SIDE: bool, W> WebSocket<SIDE, W>
+where
+    W: Unpin + AsyncWrite,
+{
     /// Send message to a endpoint.
     #[inline]
     pub async fn send(&mut self, data: impl Message) -> Result<()> {
         let mut bytes = vec![];
         data.encode::<SIDE>(&mut bytes);
-        self.stream.write_all(&bytes).await
-    }
-
-    #[inline]
-    /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
-    pub async fn send_ping(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
-        let mut bytes = vec![];
-        message::encode::<SIDE>(&mut bytes, true, 9, data.as_ref());
-        self.stream.write_all(&bytes).await
-    }
-
-    #[inline]
-    /// Sends a pong frame in response to a ping frame received from the WebSocket endpoint.
-    pub async fn send_pong(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
-        let mut bytes = vec![];
-        message::encode::<SIDE>(&mut bytes, true, 10, data.as_ref());
         self.stream.write_all(&bytes).await
     }
 
@@ -54,6 +44,7 @@ impl<const SIDE: bool, W: Unpin + AsyncWrite> WebSocket<SIDE, W> {
         self.stream
             .write_all(reason.encode::<SIDE>().as_ref())
             .await?;
+
         self.stream.flush().await
     }
 }
@@ -80,7 +71,10 @@ where
     }
 }
 
-impl<const SIDE: bool, R: Unpin + AsyncRead> WebSocket<SIDE, R> {
+impl<const SIDE: bool, R> WebSocket<SIDE, R>
+where
+    R: Unpin + AsyncRead,
+{
     /// ### WebSocket Frame Header
     ///
     /// ```txt
