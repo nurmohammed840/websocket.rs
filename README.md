@@ -8,7 +8,7 @@ To use this library, add it as a dependency to your Rust project by adding the f
 
 ```toml
 [dependencies]
-web-socket = "0.5"
+web-socket = "0.6"
 ```
 
 ### Example
