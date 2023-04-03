@@ -14,6 +14,8 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// Default: 16 MB
     pub max_payload_len: usize,
+
+    #[cfg(debug_assertions)]
     is_closed: bool,
 }
 
@@ -56,14 +58,19 @@ where
     /// reads [Event] from websocket stream.
     #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
+        #[cfg(debug_assertions)]
         if self.is_closed {
-            io_err!(NotConnected, "read after close");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "read after close",
+            ));
         }
         let event = if SIDE == SERVER {
             self.header(server::footer).await
         } else {
             self.header(client::footer).await
         };
+        #[cfg(debug_assertions)]
         if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
             self.is_closed = true;
         }
@@ -123,7 +130,7 @@ where
             // for non-zero values.  If a nonzero value is received and none of
             // the negotiated extensions defines the meaning of such a nonzero
             // value, the receiving endpoint MUST _Fail the WebSocket Connection_.
-            err!("reserve bit MUST be `0`");
+            err!("reserve bit must be `0`");
         }
 
         // A client MUST mask all frames that it sends to the server. (Note
@@ -233,6 +240,7 @@ impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
         Self {
             stream,
             max_payload_len: 16 * 1024 * 1024,
+            #[cfg(debug_assertions)]
             is_closed: false,
         }
     }

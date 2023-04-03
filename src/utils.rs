@@ -23,10 +23,3 @@ macro_rules! err {
     };
 }
 pub(crate) use err;
-
-macro_rules! io_err {
-    [$kind: ident, $msg: expr] => {
-        return Err(std::io::Error::new(std::io::ErrorKind::$kind, $msg))
-    };
-}
-pub(crate) use io_err;

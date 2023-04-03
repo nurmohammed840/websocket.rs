@@ -1,6 +1,6 @@
 ## Introduction
 
-This library is an implementation of the [WebSocket](https://en.wikipedia.org/wiki/WebSocket) protocol, which provides a way for two-way communication between a client and server over a single TCP connection. This library provides an easy-to-use, modern, intuitive WebSocket implementation for both client and server-side applications.
+This library is an implementation of the [WebSocket](https://en.wikipedia.org/wiki/WebSocket) protocol, which provides a way for two-way communication between a client and server over a single TCP connection. This library provides fastest and intuitive WebSocket implementation for both client and server-side applications.
 
 ## Installation
 
