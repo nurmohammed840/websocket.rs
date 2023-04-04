@@ -148,12 +148,11 @@ where
             if len > 125 {
                 err!("control frame must have a payload length of 125 bytes or less");
             }
-            let mut msg = vec![0; len];
-            self.read_data(&mut msg).await?;
+            let msg = self.read_payload(len).await?;
             match opcode {
                 8 => Ok(on_close(msg)),
-                9 => Ok(Event::Ping(msg.into())),
-                10 => Ok(Event::Pong(msg.into())),
+                9 => Ok(Event::Ping(msg)),
+                10 => Ok(Event::Pong(msg)),
                 // 11-15 are reserved for further control frames
                 _ => err!("unknown opcode"),
             }
@@ -176,23 +175,23 @@ where
             if len > self.max_payload_len {
                 err!("payload length exceeded");
             }
-            let mut data = vec![0; len].into_boxed_slice();
-            self.read_data(&mut data).await?;
+            let data = self.read_payload(len).await?;
             Ok(Event::Data { ty, data })
         }
     }
 
-    async fn read_data(&mut self, data: &mut [u8]) -> Result<()> {
+    async fn read_payload(&mut self, len: usize) -> Result<Box<[u8]>> {
+        let mut data = vec![0; len].into_boxed_slice();
         if SIDE == SERVER {
             let mask: [u8; 4] = read_buf(&mut self.stream).await?;
-            self.stream.read_exact(data).await?;
+            self.stream.read_exact(&mut data).await?;
             for (i, byte) in data.iter_mut().enumerate() {
                 *byte ^= mask[i % 4];
             }
         } else {
-            self.stream.read_exact(data).await?;
+            self.stream.read_exact(&mut data).await?;
         }
-        Ok(())
+        Ok(data)
     }
 }
 
@@ -212,7 +211,7 @@ where
 /// - After both sending and receiving a Close message, an endpoint
 ///   considers the WebSocket connection closed and MUST close the
 ///   underlying TCP connection.
-fn on_close(msg: Vec<u8>) -> Event {
+fn on_close(msg: Box<[u8]>) -> Event {
     let code = msg
         .get(..2)
         .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
