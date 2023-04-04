@@ -1,8 +1,6 @@
 #![allow(clippy::unusual_byte_groupings)]
 use crate::*;
-
-mod client;
-mod server;
+use tokio::io::*;
 
 /// WebSocket implementation for both client and server
 #[derive(Debug)]
@@ -14,8 +12,6 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// Default: 16 MB
     pub max_payload_len: usize,
-
-    #[cfg(debug_assertions)]
     is_closed: bool,
 }
 
@@ -51,6 +47,20 @@ where
     }
 }
 
+// ------------------------------------------------------------------------
+
+macro_rules! err { [$msg: expr] => { return Ok(Event::Error($msg)) }; }
+
+#[inline]
+pub async fn read_buf<const N: usize, R>(stream: &mut R) -> Result<[u8; N]>
+where
+    R: Unpin + AsyncRead,
+{
+    let mut buf = [0; N];
+    stream.read_exact(&mut buf).await?;
+    Ok(buf)
+}
+
 impl<const SIDE: bool, R> WebSocket<SIDE, R>
 where
     R: Unpin + AsyncRead,
@@ -58,30 +68,19 @@ where
     /// reads [Event] from websocket stream.
     #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
-        #[cfg(debug_assertions)]
         if self.is_closed {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotConnected,
                 "read after close",
             ));
         }
-        let event = if SIDE == SERVER {
-            self.header(server::footer).await
-        } else {
-            self.header(client::footer).await
-        };
-        #[cfg(debug_assertions)]
+        let event = self.header().await;
         if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
             self.is_closed = true;
         }
         event
     }
-}
 
-impl<const SIDE: bool, R> WebSocket<SIDE, R>
-where
-    R: Unpin + AsyncRead,
-{
     /// ### WebSocket Frame Header
     ///
     /// ```txt
@@ -105,13 +104,7 @@ where
     /// +---------------------------------------------------------------+
     /// ```
     #[inline]
-    async fn header<'a, Fut>(
-        &'a mut self,
-        footer: fn(&'a mut Self, DataType, usize) -> Fut,
-    ) -> Result<Event>
-    where
-        Fut: Future<Output = Result<Event>> + 'a,
-    {
+    async fn header(&mut self) -> Result<Event> {
         let [b1, b2] = read_buf(&mut self.stream).await?;
 
         let fin = b1 & 0b_1000_0000 != 0;
@@ -156,13 +149,7 @@ where
                 err!("control frame must have a payload length of 125 bytes or less");
             }
             let mut msg = vec![0; len];
-            if SERVER == SIDE {
-                let mask = read_buf(&mut self.stream).await?;
-                self.stream.read_exact(&mut msg).await?;
-                utils::apply_mask(&mut msg, mask);
-            } else {
-                self.stream.read_exact(&mut msg).await?;
-            }
+            self.read_data(&mut msg).await?;
             match opcode {
                 8 => Ok(on_close(msg)),
                 9 => Ok(Event::Ping(msg.into())),
@@ -171,7 +158,7 @@ where
                 _ => err!("unknown opcode"),
             }
         } else {
-            let data_type = match (opcode, fin) {
+            let ty = match (opcode, fin) {
                 (2, true) => DataType::Complete(MessageType::Binary),
                 (1, true) => DataType::Complete(MessageType::Text),
 
@@ -189,8 +176,23 @@ where
             if len > self.max_payload_len {
                 err!("payload length exceeded");
             }
-            footer(self, data_type, len).await
+            let mut data = vec![0; len].into_boxed_slice();
+            self.read_data(&mut data).await?;
+            Ok(Event::Data { ty, data })
         }
+    }
+
+    async fn read_data(&mut self, data: &mut [u8]) -> Result<()> {
+        if SIDE == SERVER {
+            let mask: [u8; 4] = read_buf(&mut self.stream).await?;
+            self.stream.read_exact(data).await?;
+            for (i, byte) in data.iter_mut().enumerate() {
+                *byte ^= mask[i % 4];
+            }
+        } else {
+            self.stream.read_exact(data).await?;
+        }
+        Ok(())
     }
 }
 
@@ -234,13 +236,29 @@ fn on_close(msg: Vec<u8>) -> Event {
     }
 }
 
+impl<IO> WebSocket<CLIENT, IO> {
+    /// Create a new websocket client instance.
+    #[inline]
+    pub fn client(stream: IO) -> Self {
+        Self::from(stream)
+    }
+}
+
+impl<IO> WebSocket<SERVER, IO> {
+    /// Create a websocket server instance.
+    #[inline]
+    pub fn server(stream: IO) -> Self {
+        Self::from(stream)
+    }
+}
+
 impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
     #[inline]
     fn from(stream: IO) -> Self {
         Self {
             stream,
             max_payload_len: 16 * 1024 * 1024,
-            #[cfg(debug_assertions)]
+
             is_closed: false,
         }
     }

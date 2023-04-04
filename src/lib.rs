@@ -3,15 +3,9 @@
 #![warn(missing_docs)]
 
 mod message;
-mod utils;
 mod ws;
 
 pub use ws::WebSocket;
-
-use std::future::Future;
-use std::io::Result;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use utils::*;
 
 /// Used to represent `WebSocket<SERVER, IO>` type.
 pub const SERVER: bool = true;
