@@ -182,6 +182,7 @@ impl From<u16> for CloseCode {
 }
 
 impl PartialEq<u16> for CloseCode {
+    #[inline]
     fn eq(&self, other: &u16) -> bool {
         (*self as u16) == *other
     }

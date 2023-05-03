@@ -1,5 +1,4 @@
 use crate::*;
-use rand::Rng;
 
 impl<T> Message for &T
 where
@@ -55,12 +54,12 @@ where
 // ------------------------------------------------------------------------------
 
 impl CloseFrame for () {
-    type Frame = Box<[u8]>;
+    type Frame = &'static [u8];
     fn encode<const SIDE: bool>(self) -> Self::Frame {
         if SIDE == SERVER {
-            Box::new([136, 0])
+            &[136, 0]
         } else {
-            Box::new([136, 128, 0, 0, 0, 0])
+            &[136, 128, 0, 0, 0, 0]
         }
     }
 }
@@ -147,8 +146,7 @@ pub(crate) fn encode<const SIDE: bool>(writer: &mut Vec<u8>, fin: bool, opcode: 
             std::ptr::copy_nonoverlapping(data.as_ptr(), start.add(len), data_len);
             len
         } else {
-            let mut rng = rand::thread_rng();
-            let mask = rng.gen::<u32>().to_ne_bytes();
+            let mask = rand::random::<u32>().to_ne_bytes();
             let [a, b, c, d] = mask;
             start.add(len).write(a);
             start.add(len + 1).write(b);
@@ -156,8 +154,10 @@ pub(crate) fn encode<const SIDE: bool>(writer: &mut Vec<u8>, fin: bool, opcode: 
             start.add(len + 3).write(d);
 
             let dist = start.add(len + 4);
-            for (index, byte) in data.iter().enumerate() {
-                dist.add(index).write(byte ^ mask.get_unchecked(index % 4));
+            // TODO: Use SIMD wherever possible for best performance
+            for i in 0..data_len {
+                dist.add(i)
+                    .write(data.get_unchecked(i) ^ mask.get_unchecked(i & 3));
             }
             len + 4
         };

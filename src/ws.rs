@@ -74,7 +74,7 @@ where
                 "read after close",
             ));
         }
-        let event = self.header().await;
+        let event = self.read_frame().await;
         if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
             self.is_closed = true;
         }
@@ -104,7 +104,7 @@ where
     /// +---------------------------------------------------------------+
     /// ```
     #[inline]
-    async fn header(&mut self) -> Result<Event> {
+    async fn read_frame(&mut self) -> Result<Event> {
         let [b1, b2] = read_buf(&mut self.stream).await?;
 
         let fin = b1 & 0b_1000_0000 != 0;
@@ -185,8 +185,9 @@ where
         if SIDE == SERVER {
             let mask: [u8; 4] = read_buf(&mut self.stream).await?;
             self.stream.read_exact(&mut data).await?;
-            for (i, byte) in data.iter_mut().enumerate() {
-                *byte ^= mask[i % 4];
+            // TODO: Use SIMD wherever possible for best performance
+            for i in 0..data.len() {
+                data[i] ^= mask[i & 3];
             }
         } else {
             self.stream.read_exact(&mut data).await?;
