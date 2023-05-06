@@ -87,7 +87,7 @@ impl<'a> From<&'a [u8]> for Frame<'a> {
     fn from(data: &'a [u8]) -> Self {
         Self {
             fin: true,
-            opcode: 1,
+            opcode: 2,
             data,
         }
     }
