@@ -28,21 +28,21 @@ pub enum MessageType {
 
 /// Represents a fragment of a WebSocket message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fragment {
+pub enum Stream {
     /// Indicates the start of a new message fragment of the given [MessageType].
     Start(MessageType),
     /// Indicates the continuation of the current message fragment.
-    Next,
+    Next(MessageType),
     /// Indicates the end of the current message fragment.
-    End,
+    End(MessageType),
 }
 
 /// Data that is either complete or fragmented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
     /// The message is split into fragments, each of which is sent as a separate
     /// WebSocket message with the [Fragment] variant.
-    Fragment(Fragment),
+    Stream(Stream),
     /// A complete WebSocket message in a single transmission.
     Complete(MessageType),
 }
@@ -173,7 +173,7 @@ impl CloseReason for () {
 
 impl CloseReason for u16 {
     type Bytes = [u8; 2];
-    
+
     #[inline]
     fn to_bytes(self) -> Self::Bytes {
         self.to_be_bytes()

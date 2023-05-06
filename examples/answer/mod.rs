@@ -6,29 +6,17 @@ pub async fn echo<IO>(mut ws: WebSocket<IO>) -> Result<()>
 where
     IO: AsyncRead + AsyncWrite + Unpin,
 {
-    let mut buf = Vec::with_capacity(4096);
-    let mut frag_msg: Option<MessageType> = None;
+    let mut buf = Vec::<u8>::with_capacity(4096);
     loop {
-        match ws.recv().await? {
+        match ws.recv_frame().await? {
             Event::Data { ty, data } => match ty {
-                DataType::Fragment(chunk) => {
-                    match chunk {
-                        Fragment::Start(ty) if frag_msg.replace(ty).is_some() => return Ok(()),
-                        Fragment::Next if frag_msg.is_none() => return Ok(()),
-                        _ => buf.extend_from_slice(&data),
-                    }
-                    if let Fragment::End = chunk {
-                        let Some(ty) = frag_msg.take() else { return Ok(()) };
+                DataType::Complete(ty) => send_msg(&mut ws, ty, &data).await?,
+                DataType::Stream(stream) => {
+                    buf.extend_from_slice(&data);
+                    if let Stream::End(ty) = stream {
                         send_msg(&mut ws, ty, &buf).await?;
                         buf.clear();
                     }
-                }
-                DataType::Complete(ty) => {
-                    if frag_msg.is_some() {
-                        // expected fragment, but got data
-                        return Ok(());
-                    }
-                    send_msg(&mut ws, ty, &data).await?;
                 }
             },
             Event::Ping(data) => ws.send_pong(data).await?,

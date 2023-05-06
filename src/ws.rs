@@ -15,6 +15,7 @@ pub struct WebSocket<Stream> {
     pub max_payload_len: usize,
     role: Role,
     is_closed: bool,
+    frag: Option<MessageType>,
 }
 
 impl<IO> WebSocket<IO> {
@@ -236,14 +237,14 @@ where
                 _ => err!("unknown opcode"),
             }
         } else {
-            let ty = match (opcode, fin) {
-                (2, true) => DataType::Complete(MessageType::Binary),
-                (1, true) => DataType::Complete(MessageType::Text),
-                (2, false) => DataType::Fragment(Fragment::Start(MessageType::Binary)),
-                (1, false) => DataType::Fragment(Fragment::Start(MessageType::Text)),
-                (0, false) => DataType::Fragment(Fragment::Next),
-                (0, true) => DataType::Fragment(Fragment::End),
-                _ => err!("unknown opcode"),
+            let ty = match (opcode, fin, self.frag) {
+                (2, true, None) => DataType::Complete(MessageType::Binary),
+                (1, true, None) => DataType::Complete(MessageType::Text),
+                (2, false, None) => DataType::Stream(Stream::Start(MessageType::Binary)),
+                (1, false, None) => DataType::Stream(Stream::Start(MessageType::Text)),
+                (0, false, Some(ty)) => DataType::Stream(Stream::Next(ty)),
+                (0, true, Some(ty)) => DataType::Stream(Stream::End(ty)),
+                _ => err!("invalid data type"),
             };
             let len = match len {
                 126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
@@ -325,6 +326,7 @@ impl<IO> From<(IO, Role)> for WebSocket<IO> {
             max_payload_len: 16 * 1024 * 1024,
             role,
             is_closed: false,
+            frag: None,
         }
     }
 }
