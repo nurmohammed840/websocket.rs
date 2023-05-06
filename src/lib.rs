@@ -15,7 +15,7 @@ pub const CLIENT: bool = false;
 /// This trait is responsible for encoding websocket messages.
 pub trait Message {
     /// Encode websocket data frame.
-    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
+    fn frame_type(&self) -> (bool, u8, &[u8]);
 }
 
 /// This trait is responsible for encoding websocket closed frame.

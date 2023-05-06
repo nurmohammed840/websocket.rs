@@ -1,4 +1,6 @@
 #![allow(clippy::unusual_byte_groupings)]
+use std::io::IoSlice;
+
 use crate::*;
 use tokio::io::*;
 
@@ -19,12 +21,68 @@ impl<const SIDE: bool, W> WebSocket<SIDE, W>
 where
     W: Unpin + AsyncWrite,
 {
+    ///
+    pub async fn send_raw(&mut self, fin: bool, opcode: u8, data: &[u8]) -> Result<()> {
+        let data_len = data.len();
+        let mask_bit = if SERVER == SIDE { 0 } else { 0x80 };
+
+        if SERVER == SIDE && self.stream.is_write_vectored() {
+            let mut head = [0; 10];
+            let head_len =
+                unsafe { write_head(head.as_mut_ptr(), fin, opcode, data_len, mask_bit) };
+
+            let total_len = head_len + data.len();
+            let mut slices = [IoSlice::new(&head[..head_len]), IoSlice::new(data)];
+
+            let mut amt = self.stream.write_vectored(&slices).await?;
+            if amt == total_len {
+                return Ok(());
+            }
+            // Slighly more optimized than (unstable) write_all_vectored for 2 iovecs.
+            while amt <= head_len {
+                slices[0] = IoSlice::new(&head[amt..head_len]);
+                amt += self.stream.write_vectored(&slices).await?;
+            }
+            // Header out of the way.
+            if amt < total_len && amt > head_len {
+                self.stream.write_all(&data[amt - head_len..]).await?;
+            }
+            Ok(())
+        } else {
+            let mut buf = Vec::<u8>::with_capacity(if SERVER == SIDE { 10 } else { 14 } + data_len);
+            unsafe {
+                let dist = buf.as_mut_ptr();
+                let len = write_head(dist, fin, opcode, data_len, mask_bit);
+
+                let header_len = if SERVER == SIDE {
+                    std::ptr::copy_nonoverlapping(data.as_ptr(), dist.add(len), data_len);
+                    len
+                } else {
+                    let mask = rand::random::<u32>().to_ne_bytes();
+                    let [a, b, c, d] = mask;
+                    dist.add(len).write(a);
+                    dist.add(len + 1).write(b);
+                    dist.add(len + 2).write(c);
+                    dist.add(len + 3).write(d);
+
+                    let dist = dist.add(len + 4);
+                    // TODO: Use SIMD wherever possible for best performance
+                    for i in 0..data_len {
+                        dist.add(i)
+                            .write(data.get_unchecked(i) ^ mask.get_unchecked(i & 3));
+                    }
+                    len + 4
+                };
+                buf.set_len(header_len + data_len);
+            }
+            self.stream.write_all(&buf).await
+        }
+    }
+
     /// Send message to a endpoint.
-    #[inline]
     pub async fn send(&mut self, data: impl Message) -> Result<()> {
-        let mut bytes = vec![];
-        data.encode::<SIDE>(&mut bytes);
-        self.stream.write_all(&bytes).await
+        let (fin, opcode, data) = data.frame_type();
+        self.send_raw(fin, opcode, data).await
     }
 
     /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
@@ -47,6 +105,32 @@ where
     }
 }
 
+unsafe fn write_head(dist: *mut u8, fin: bool, opcode: u8, data_len: usize, mask_bit: u8) -> usize {
+    dist.write(((fin as u8) << 7) | opcode);
+    if data_len < 126 {
+        dist.add(1).write(mask_bit | data_len as u8);
+        2
+    } else if data_len < 65536 {
+        let [b2, b3] = (data_len as u16).to_be_bytes();
+        dist.add(1).write(mask_bit | 126);
+        dist.add(2).write(b2);
+        dist.add(3).write(b3);
+        4
+    } else {
+        let [b2, b3, b4, b5, b6, b7, b8, b9] = (data_len as u64).to_be_bytes();
+        dist.add(1).write(mask_bit | 127);
+        dist.add(2).write(b2);
+        dist.add(3).write(b3);
+        dist.add(4).write(b4);
+        dist.add(5).write(b5);
+        dist.add(6).write(b6);
+        dist.add(7).write(b7);
+        dist.add(8).write(b8);
+        dist.add(9).write(b9);
+        10
+    }
+}
+
 // ------------------------------------------------------------------------
 
 macro_rules! err { [$msg: expr] => { return Ok(Event::Error($msg)) }; }
@@ -57,7 +141,7 @@ where
     R: Unpin + AsyncRead,
 {
     let mut buf = [0; N];
-    stream.read_exact(&mut buf).await?;
+    stream.read(&mut buf).await?;
     Ok(buf)
 }
 
@@ -104,7 +188,7 @@ where
     /// +---------------------------------------------------------------+
     /// ```
     #[inline]
-    async fn read_frame(&mut self) -> Result<Event> {
+    pub async fn read_frame(&mut self) -> Result<Event> {
         let [b1, b2] = read_buf(&mut self.stream).await?;
 
         let fin = b1 & 0b_1000_0000 != 0;
@@ -116,7 +200,7 @@ where
         // masking key is present in masking-key, and this is used to unmask
         // the "Payload data" as per [Section 5.3](https://datatracker.ietf.org/doc/html/rfc6455#section-5.3).  All frames sent from
         // client to server have this bit set to 1.
-        let is_masked = b2 & 0b_1000_0000 != 0;
+        // let is_masked = b2 & 0b_1000_0000 != 0;
 
         if rsv != 0 {
             // MUST be `0` unless an extension is negotiated that defines meanings
@@ -126,19 +210,19 @@ where
             err!("reserve bit must be `0`");
         }
 
-        // A client MUST mask all frames that it sends to the server. (Note
-        // that masking is done whether or not the WebSocket Protocol is running
-        // over TLS.)  The server MUST close the connection upon receiving a
-        // frame that is not masked.
-        //
-        // A server MUST NOT mask any frames that it sends to the client.
-        if SERVER == SIDE {
-            if !is_masked {
-                err!("expected masked frame");
-            }
-        } else if is_masked {
-            err!("expected unmasked frame");
-        }
+        // // A client MUST mask all frames that it sends to the server. (Note
+        // // that masking is done whether or not the WebSocket Protocol is running
+        // // over TLS.)  The server MUST close the connection upon receiving a
+        // // frame that is not masked.
+        // //
+        // // A server MUST NOT mask any frames that it sends to the client.
+        // if SERVER == SIDE {
+        //     if !is_masked {
+        //         err!("expected masked frame");
+        //     }
+        // } else if is_masked {
+        //     err!("expected unmasked frame");
+        // }
 
         // 3-7 are reserved for further non-control frames.
         if opcode >= 8 {
@@ -151,20 +235,20 @@ where
             let msg = self.read_payload(len).await?;
             match opcode {
                 8 => Ok(on_close(msg)),
-                9 => Ok(Event::Ping(msg)),
-                10 => Ok(Event::Pong(msg)),
+                // 9 => Ok(Event::Ping(msg)),
+                // 10 => Ok(Event::Pong(msg)),
                 // 11-15 are reserved for further control frames
                 _ => err!("unknown opcode"),
             }
         } else {
             let ty = match (opcode, fin) {
-                (2, true) => DataType::Complete(MessageType::Binary),
+                // (2, true) => DataType::Complete(MessageType::Binary),
                 (1, true) => DataType::Complete(MessageType::Text),
 
-                (2, false) => DataType::Fragment(Fragment::Start(MessageType::Binary)),
-                (1, false) => DataType::Fragment(Fragment::Start(MessageType::Text)),
-                (0, false) => DataType::Fragment(Fragment::Next),
-                (0, true) => DataType::Fragment(Fragment::End),
+                // (2, false) => DataType::Fragment(Fragment::Start(MessageType::Binary)),
+                // (1, false) => DataType::Fragment(Fragment::Start(MessageType::Text)),
+                // (0, false) => DataType::Fragment(Fragment::Next),
+                // (0, true) => DataType::Fragment(Fragment::End),
                 _ => err!("unknown opcode"),
             };
             let len = match len {
