@@ -10,7 +10,7 @@ async fn main() -> Result<()> {
 use tokio::io::*;
 use web_socket::*;
 
-async fn example<IO>(mut ws: WebSocket<CLIENT, IO>) -> Result<()>
+async fn example<IO>(mut ws: WebSocket<IO>) -> Result<()>
 where
     IO: Unpin + AsyncRead + AsyncWrite,
 {
@@ -23,7 +23,7 @@ where
                 assert_eq!(ty, DataType::Complete(MessageType::Text));
                 assert_eq!(&*data, b"Copy Cat!");
             }
-            Event::Ping(data) => ws.send(Pong(data)).await?,
+            Event::Ping(data) => ws.send_pong(data).await?,
             Event::Pong(..) => {}
             Event::Error(..) => return ws.close(CloseCode::ProtocolError).await,
             Event::Close { .. } => return ws.close(()).await,

@@ -2,28 +2,19 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
-mod message;
+mod frame;
 mod ws;
-
+#[doc(hidden)]
+pub use frame::Frame;
 pub use ws::WebSocket;
 
-/// Used to represent `WebSocket<SERVER, IO>` type.
-pub const SERVER: bool = true;
-/// Used to represent `WebSocket<CLIENT, IO>` type.
-pub const CLIENT: bool = false;
-
-/// This trait is responsible for encoding websocket messages.
-pub trait Message {
-    /// Encode websocket data frame.
-    fn frame_type(&self) -> (bool, u8, &[u8]);
-}
-
-/// This trait is responsible for encoding websocket closed frame.
-pub trait CloseFrame {
-    /// Serialized close frame
-    type Frame;
-    /// Encode websocket close frame.
-    fn encode<const SIDE: bool>(self) -> Self::Frame;
+/// Two roles that can be played by a WebSocket connection: `Server` and `Client`.
+#[derive(Debug, Clone)]
+pub enum Role {
+    /// Represent websocket server instance.
+    Server,
+    /// Represent websocket client instance.
+    Client,
 }
 
 /// It represent the type of data that is being sent over the WebSocket connection.
@@ -93,30 +84,6 @@ pub enum Event {
     },
 }
 
-/// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
-///
-/// It is used to send ping frame.
-///
-/// ### Example
-///
-/// ```no_run
-/// # use web_socket::*;
-/// # async fn get_stream() -> tokio::net::TcpStream { todo!() }
-/// # async {
-/// let mut ws = WebSocket::client(get_stream().await);
-/// ws.send(Ping("Hello!")).await;
-/// # };
-/// ```
-#[derive(Debug)]
-pub struct Ping<T>(pub T);
-
-/// A Pong frame sent in response to a Ping frame must have identical
-/// "Application data" as found in the message body of the Ping frame being replied to.
-///
-/// A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
-#[derive(Debug)]
-pub struct Pong<T>(pub T);
-
 /// When closing an established connection an endpoint MAY indicate a reason for closure.
 #[derive(Debug, Clone, Copy)]
 pub enum CloseCode {
@@ -185,5 +152,62 @@ impl PartialEq<u16> for CloseCode {
     #[inline]
     fn eq(&self, other: &u16) -> bool {
         (*self as u16) == *other
+    }
+}
+
+/// This trait is responsible for encoding websocket closed frame.
+pub trait CloseReason {
+    /// Encoded close reason as bytes
+    type Bytes;
+    /// Encode websocket close frame.
+    fn to_bytes(self) -> Self::Bytes;
+}
+
+impl CloseReason for () {
+    type Bytes = [u8; 0];
+    #[inline]
+    fn to_bytes(self) -> Self::Bytes {
+        [0; 0]
+    }
+}
+
+impl CloseReason for u16 {
+    type Bytes = [u8; 2];
+    
+    #[inline]
+    fn to_bytes(self) -> Self::Bytes {
+        self.to_be_bytes()
+    }
+}
+
+impl CloseReason for CloseCode {
+    type Bytes = [u8; 2];
+
+    fn to_bytes(self) -> Self::Bytes {
+        (self as u16).to_be_bytes()
+    }
+}
+
+impl CloseReason for &str {
+    type Bytes = Vec<u8>;
+
+    fn to_bytes(self) -> Self::Bytes {
+        CloseReason::to_bytes((CloseCode::Normal, self))
+    }
+}
+
+impl<Code, Msg> CloseReason for (Code, Msg)
+where
+    Code: Into<u16>,
+    Msg: AsRef<[u8]>,
+{
+    type Bytes = Vec<u8>;
+
+    fn to_bytes(self) -> Self::Bytes {
+        let (code, reason) = (self.0.into(), self.1.as_ref());
+        let mut data = Vec::with_capacity(2 + reason.len());
+        data.extend_from_slice(&code.to_be_bytes());
+        data.extend_from_slice(reason);
+        data
     }
 }
