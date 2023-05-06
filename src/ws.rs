@@ -146,7 +146,6 @@ where
     R: Unpin + AsyncRead,
 {
     /// reads [Event] from websocket stream.
-    #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
         if self.is_closed {
             return Err(std::io::Error::new(
@@ -154,37 +153,37 @@ where
                 "read after close",
             ));
         }
-        let event = self.recv_frame().await;
+        let event = self.recv_event().await;
         if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
             self.is_closed = true;
         }
         event
     }
 
-    /// ### WebSocket Frame Header
-    ///
-    /// ```txt
-    ///  0                   1                   2                   3
-    ///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-    /// +-+-+-+-+-------+-+-------------+-------------------------------+
-    /// |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
-    /// |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
-    /// |N|V|V|V|       |S|             |   (if payload len==126/127)   |
-    /// | |1|2|3|       |K|             |                               |
-    /// +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
-    /// |     Extended payload length continued, if payload len == 127  |
-    /// + - - - - - - - - - - - - - - - +-------------------------------+
-    /// |                               |Masking-key, if MASK set to 1  |
-    /// +-------------------------------+-------------------------------+
-    /// | Masking-key (continued)       |          Payload Data         |
-    /// +-------------------------------- - - - - - - - - - - - - - - - +
-    /// :                     Payload Data continued ...                :
-    /// + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
-    /// |                     Payload Data continued ...                |
-    /// +---------------------------------------------------------------+
-    /// ```
-    #[inline]
-    pub async fn recv_frame(&mut self) -> Result<Event> {
+    // ### WebSocket Frame Header
+    //
+    // ```txt
+    //  0                   1                   2                   3
+    //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    // +-+-+-+-+-------+-+-------------+-------------------------------+
+    // |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+    // |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+    // |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+    // | |1|2|3|       |K|             |                               |
+    // +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+    // |     Extended payload length continued, if payload len == 127  |
+    // + - - - - - - - - - - - - - - - +-------------------------------+
+    // |                               |Masking-key, if MASK set to 1  |
+    // +-------------------------------+-------------------------------+
+    // | Masking-key (continued)       |          Payload Data         |
+    // +-------------------------------- - - - - - - - - - - - - - - - +
+    // :                     Payload Data continued ...                :
+    // + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+    // |                     Payload Data continued ...                |
+    // +---------------------------------------------------------------+
+    // ```
+    /// reads [Event] from websocket stream.
+    pub async fn recv_event(&mut self) -> Result<Event> {
         let [b1, b2] = read_buf(&mut self.stream).await?;
 
         let fin = b1 & 0b_1000_0000 != 0;
@@ -240,11 +239,20 @@ where
             let ty = match (opcode, fin, self.frag) {
                 (2, true, None) => DataType::Complete(MessageType::Binary),
                 (1, true, None) => DataType::Complete(MessageType::Text),
-                (2, false, None) => DataType::Stream(Stream::Start(MessageType::Binary)),
-                (1, false, None) => DataType::Stream(Stream::Start(MessageType::Text)),
+                (2, false, None) => {
+                    self.frag = Some(MessageType::Binary);
+                    DataType::Stream(Stream::Start(MessageType::Binary))
+                }
+                (1, false, None) => {
+                    self.frag = Some(MessageType::Text);
+                    DataType::Stream(Stream::Start(MessageType::Text))
+                }
                 (0, false, Some(ty)) => DataType::Stream(Stream::Next(ty)),
-                (0, true, Some(ty)) => DataType::Stream(Stream::End(ty)),
-                _ => err!("invalid data type"),
+                (0, true, Some(ty)) => {
+                    self.frag = None;
+                    DataType::Stream(Stream::End(ty))
+                }
+                _ => err!("invalid data frame"),
             };
             let len = match len {
                 126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,

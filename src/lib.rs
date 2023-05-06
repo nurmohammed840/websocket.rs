@@ -21,9 +21,23 @@ pub enum Role {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageType {
     /// `Text` data is represented as a sequence of Unicode characters encoded using UTF-8 encoding.
-    Text,
+    Text = 1,
     /// `Binary` data can be any sequence of bytes and is typically used for sending non-textual data, such as images, audio files etc...
-    Binary,
+    Binary = 2,
+}
+
+impl MessageType {
+    /// Returns `true` if message type is text
+    #[inline]
+    pub fn is_text(&self) -> bool {
+        matches!(self, MessageType::Text)
+    }
+
+    /// Returns `true` if message type is binary
+    #[inline]
+    pub fn is_binary(&self) -> bool {
+        matches!(self, MessageType::Binary)
+    }
 }
 
 /// Represents a fragment of a WebSocket message.
@@ -183,6 +197,7 @@ impl CloseReason for u16 {
 impl CloseReason for CloseCode {
     type Bytes = [u8; 2];
 
+    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         (self as u16).to_be_bytes()
     }
@@ -191,6 +206,7 @@ impl CloseReason for CloseCode {
 impl CloseReason for &str {
     type Bytes = Vec<u8>;
 
+    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         CloseReason::to_bytes((CloseCode::Normal, self))
     }
@@ -203,6 +219,7 @@ where
 {
     type Bytes = Vec<u8>;
 
+    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         let (code, reason) = (self.0.into(), self.1.as_ref());
         let mut data = Vec::with_capacity(2 + reason.len());
