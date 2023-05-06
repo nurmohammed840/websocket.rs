@@ -44,6 +44,9 @@ impl<'a> Frame<'a> {
         buf
     }
 
+    /// # SEAFTY
+    ///
+    /// - `dist` must be valid for writes of 10 bytes.
     pub(crate) unsafe fn encode_header_unchecked(&self, dist: *mut u8, mask_bit: u8) -> usize {
         dist.write(((self.fin as u8) << 7) | self.opcode);
         if self.data.len() < 126 {

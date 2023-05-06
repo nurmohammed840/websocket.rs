@@ -43,19 +43,16 @@ where
                     let head_len = unsafe { frame.encode_header_unchecked(head.as_mut_ptr(), 0) };
                     let total_len = head_len + frame.data.len();
 
-                    let mut slices = [IoSlice::new(&head[..head_len]), IoSlice::new(frame.data)];
-                    let mut amt = self.stream.write_vectored(&slices).await?;
+                    let mut bufs = [IoSlice::new(&head[..head_len]), IoSlice::new(frame.data)];
+                    let mut amt = self.stream.write_vectored(&bufs).await?;
                     if amt == total_len {
                         return Ok(());
                     }
-
-                    // Slighly more optimized than (unstable) write_all_vectored for 2 iovecs.
-                    while amt <= head_len {
-                        slices[0] = IoSlice::new(&head[amt..head_len]);
-                        amt += self.stream.write_vectored(&slices).await?;
+                    while amt < head_len {
+                        bufs[0] = IoSlice::new(&head[amt..head_len]);
+                        amt += self.stream.write_vectored(&bufs).await?;
                     }
-                    // Header out of the way.
-                    if amt < total_len && amt > head_len {
+                    if amt < total_len {
                         self.stream.write_all(&frame.data[amt - head_len..]).await?;
                     }
                     return Ok(());
