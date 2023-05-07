@@ -1,48 +1,48 @@
-use web_socket::{Frame, *};
+use std::io;
+use web_socket::*;
+
 const DATA: &str = "Hello";
 
 #[tokio::test]
-async fn unmasked_txt_msg() {
+async fn unmasked() -> io::Result<()> {
     let mut writer = vec![];
+
+    // ----------------------- send txt message -----------------------
+
     let mut ws = WebSocket::server(&mut writer);
-    ws.send(DATA).await.unwrap();
-    assert_eq!(writer, [0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
-}
+    ws.send(DATA).await?;
+    assert_eq!(writer, [0x81, 5, b'H', b'e', b'l', b'l', b'o']);
 
-#[tokio::test]
-async fn unmasked_ping_req() {
-    let mut bytes = vec![];
-    let mut ws = WebSocket::server(&mut bytes);
-    ws.send_ping(DATA).await.unwrap();
-    assert_eq!(bytes, [0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f,]);
-}
+    // ----------------------- send ping request ----------------------
+    writer.clear();
 
-#[tokio::test]
-async fn fragmented_unmasked_txt_msg() {
-    let mut bytes = vec![];
-    let mut ws = WebSocket::server(&mut bytes);
+    let mut ws = WebSocket::server(&mut writer);
+    ws.send_ping(DATA).await?;
+    assert_eq!(writer, [0x89, 5, b'H', b'e', b'l', b'l', b'o']);
 
+    // ----------------------- streaming text -------------------------
+    writer.clear();
+
+    let mut ws = WebSocket::server(&mut writer);
     ws.send(Frame {
         fin: false,
-        opcode: 1,
+        opcode: MessageType::Text as u8,
         data: b"Hel",
     })
-    .await
-    .unwrap();
+    .await?;
 
     ws.send(Frame {
         fin: true,
         opcode: 0,
         data: b"lo",
     })
-    .await
-    .unwrap();
-
+    .await?;
     assert_eq!(
-        bytes,
+        writer,
         [
-            0x01, 0x03, 0x48, 0x65, 0x6c, // fragmented frame
-            0x80, 0x02, 0x6c, 0x6f, // final frame
+            0x01, 3, b'H', b'e', b'l', // fragmented frame
+            0x80, 2, b'l', b'o', // final frame
         ]
     );
+    Ok(())
 }

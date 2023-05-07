@@ -9,7 +9,7 @@ pub use frame::Frame;
 pub use ws::WebSocket;
 
 /// Two roles that can be played by a WebSocket connection: `Server` and `Client`.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Role {
     /// Represent websocket server instance.
     Server,
@@ -41,14 +41,26 @@ impl MessageType {
 }
 
 /// Represents a fragment of a WebSocket message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stream {
-    /// Indicates the start of a new message fragment of the given [MessageType].
+    /// Indicates tCopyhe start of a new message fragment of the given [MessageType].
     Start(MessageType),
     /// Indicates the continuation of the current message fragment.
     Next(MessageType),
     /// Indicates the end of the current message fragment.
     End(MessageType),
+}
+
+impl Stream {
+    /// Get [MessageType] from [Stream]
+    #[inline]
+    pub fn ty(&self) -> MessageType {
+        match self {
+            Stream::Start(ty) => *ty,
+            Stream::Next(ty) => *ty,
+            Stream::End(ty) => *ty,
+        }
+    }
 }
 
 /// Data that is either complete or fragmented.
@@ -179,7 +191,6 @@ pub trait CloseReason {
 
 impl CloseReason for () {
     type Bytes = [u8; 0];
-    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         [0; 0]
     }
@@ -187,8 +198,6 @@ impl CloseReason for () {
 
 impl CloseReason for u16 {
     type Bytes = [u8; 2];
-
-    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         self.to_be_bytes()
     }
@@ -196,8 +205,6 @@ impl CloseReason for u16 {
 
 impl CloseReason for CloseCode {
     type Bytes = [u8; 2];
-
-    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         (self as u16).to_be_bytes()
     }
@@ -205,8 +212,6 @@ impl CloseReason for CloseCode {
 
 impl CloseReason for &str {
     type Bytes = Vec<u8>;
-
-    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         CloseReason::to_bytes((CloseCode::Normal, self))
     }
@@ -218,8 +223,6 @@ where
     Msg: AsRef<[u8]>,
 {
     type Bytes = Vec<u8>;
-
-    #[inline]
     fn to_bytes(self) -> Self::Bytes {
         let (code, reason) = (self.0.into(), self.1.as_ref());
         let mut data = Vec::with_capacity(2 + reason.len());
