@@ -20,9 +20,8 @@ impl<'a> Frame<'a> {
     }
 
     #[inline]
-    pub fn encode_with_mask(self) -> Vec<u8> {
+    pub fn encode_with(self, mask: [u8; 4]) -> Vec<u8> {
         let mut buf = Vec::<u8>::with_capacity(14 + self.data.len());
-        let mask = rand::random::<u32>().to_ne_bytes();
         unsafe {
             let dist = buf.as_mut_ptr();
             let head_len = self.encode_header_unchecked(dist, 0x80);
