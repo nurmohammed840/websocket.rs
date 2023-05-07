@@ -18,7 +18,7 @@ pub enum Role {
 }
 
 /// It represent the type of data that is being sent over the WebSocket connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageType {
     /// `Text` data is represented as a sequence of Unicode characters encoded using UTF-8 encoding.
     Text = 1,
@@ -41,7 +41,7 @@ impl MessageType {
 }
 
 /// Represents a fragment of a WebSocket message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Stream {
     /// Indicates tCopyhe start of a new message fragment of the given [MessageType].
     Start(MessageType),
@@ -55,16 +55,16 @@ impl Stream {
     /// Get [MessageType] from [Stream]
     #[inline]
     pub fn ty(&self) -> MessageType {
-        match self {
-            Stream::Start(ty) => *ty,
-            Stream::Next(ty) => *ty,
-            Stream::End(ty) => *ty,
+        match *self {
+            Stream::Start(ty) => ty,
+            Stream::Next(ty) => ty,
+            Stream::End(ty) => ty,
         }
     }
 }
 
 /// Data that is either complete or fragmented.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum DataType {
     /// The message is split into fragments, each of which is sent as a separate
     /// WebSocket message with the [Fragment] variant.

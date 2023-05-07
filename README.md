@@ -28,7 +28,7 @@ where
 
         match ws.recv_event().await? {
             Event::Data { ty, data } => {
-                assert_eq!(ty, DataType::Complete(MessageType::Text));
+                assert!(matches!(ty, DataType::Complete(MessageType::Text)));
                 assert_eq!(&*data, b"Copy Cat!");
             }
             Event::Ping(data) => ws.send_pong(data).await?,

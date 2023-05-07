@@ -17,10 +17,9 @@ where
     let _ = ws.recv().await?; // ignore message: Request served by 4338e324
     for _ in 0..3 {
         ws.send("Copy Cat!").await?;
-
         match ws.recv().await? {
             Event::Data { ty, data } => {
-                assert_eq!(ty, DataType::Complete(MessageType::Text));
+                assert!(matches!(ty, DataType::Complete(MessageType::Text)));
                 assert_eq!(&*data, b"Copy Cat!");
             }
             Event::Ping(data) => ws.send_pong(data).await?,
