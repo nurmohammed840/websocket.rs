@@ -2,56 +2,73 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
-mod message;
+mod frame;
 mod ws;
-
+#[doc(hidden)]
+pub use frame::Frame;
 pub use ws::WebSocket;
 
-/// Used to represent `WebSocket<SERVER, IO>` type.
-pub const SERVER: bool = true;
-/// Used to represent `WebSocket<CLIENT, IO>` type.
-pub const CLIENT: bool = false;
-
-/// This trait is responsible for encoding websocket messages.
-pub trait Message {
-    /// Encode websocket data frame.
-    fn encode<const SIDE: bool>(&self, writer: &mut Vec<u8>);
-}
-
-/// This trait is responsible for encoding websocket closed frame.
-pub trait CloseFrame {
-    /// Serialized close frame
-    type Frame;
-    /// Encode websocket close frame.
-    fn encode<const SIDE: bool>(self) -> Self::Frame;
+/// Two roles that can be played by a WebSocket connection: `Server` and `Client`.
+#[derive(Debug)]
+pub enum Role {
+    /// Represent websocket server instance.
+    Server,
+    /// Represent websocket client instance.
+    Client,
 }
 
 /// It represent the type of data that is being sent over the WebSocket connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageType {
     /// `Text` data is represented as a sequence of Unicode characters encoded using UTF-8 encoding.
-    Text,
+    Text = 1,
     /// `Binary` data can be any sequence of bytes and is typically used for sending non-textual data, such as images, audio files etc...
-    Binary,
+    Binary = 2,
+}
+
+impl MessageType {
+    /// Returns `true` if message type is text
+    #[inline]
+    pub fn is_text(&self) -> bool {
+        matches!(self, MessageType::Text)
+    }
+
+    /// Returns `true` if message type is binary
+    #[inline]
+    pub fn is_binary(&self) -> bool {
+        matches!(self, MessageType::Binary)
+    }
 }
 
 /// Represents a fragment of a WebSocket message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fragment {
-    /// Indicates the start of a new message fragment of the given [MessageType].
+#[derive(Debug, Clone)]
+pub enum Stream {
+    /// Indicates tCopyhe start of a new message fragment of the given [MessageType].
     Start(MessageType),
     /// Indicates the continuation of the current message fragment.
-    Next,
+    Next(MessageType),
     /// Indicates the end of the current message fragment.
-    End,
+    End(MessageType),
+}
+
+impl Stream {
+    /// Get [MessageType] from [Stream]
+    #[inline]
+    pub fn ty(&self) -> MessageType {
+        match *self {
+            Stream::Start(ty) => ty,
+            Stream::Next(ty) => ty,
+            Stream::End(ty) => ty,
+        }
+    }
 }
 
 /// Data that is either complete or fragmented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum DataType {
     /// The message is split into fragments, each of which is sent as a separate
     /// WebSocket message with the [Fragment] variant.
-    Fragment(Fragment),
+    Stream(Stream),
     /// A complete WebSocket message in a single transmission.
     Complete(MessageType),
 }
@@ -92,30 +109,6 @@ pub enum Event {
         reason: Box<str>,
     },
 }
-
-/// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
-///
-/// It is used to send ping frame.
-///
-/// ### Example
-///
-/// ```no_run
-/// # use web_socket::*;
-/// # async fn get_stream() -> tokio::net::TcpStream { todo!() }
-/// # async {
-/// let mut ws = WebSocket::client(get_stream().await);
-/// ws.send(Ping("Hello!")).await;
-/// # };
-/// ```
-#[derive(Debug)]
-pub struct Ping<T>(pub T);
-
-/// A Pong frame sent in response to a Ping frame must have identical
-/// "Application data" as found in the message body of the Ping frame being replied to.
-///
-/// A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
-#[derive(Debug)]
-pub struct Pong<T>(pub T);
 
 /// When closing an established connection an endpoint MAY indicate a reason for closure.
 #[derive(Debug, Clone, Copy)]
@@ -185,5 +178,56 @@ impl PartialEq<u16> for CloseCode {
     #[inline]
     fn eq(&self, other: &u16) -> bool {
         (*self as u16) == *other
+    }
+}
+
+/// This trait is responsible for encoding websocket closed frame.
+pub trait CloseReason {
+    /// Encoded close reason as bytes
+    type Bytes;
+    /// Encode websocket close frame.
+    fn to_bytes(self) -> Self::Bytes;
+}
+
+impl CloseReason for () {
+    type Bytes = [u8; 0];
+    fn to_bytes(self) -> Self::Bytes {
+        [0; 0]
+    }
+}
+
+impl CloseReason for u16 {
+    type Bytes = [u8; 2];
+    fn to_bytes(self) -> Self::Bytes {
+        self.to_be_bytes()
+    }
+}
+
+impl CloseReason for CloseCode {
+    type Bytes = [u8; 2];
+    fn to_bytes(self) -> Self::Bytes {
+        (self as u16).to_be_bytes()
+    }
+}
+
+impl CloseReason for &str {
+    type Bytes = Vec<u8>;
+    fn to_bytes(self) -> Self::Bytes {
+        CloseReason::to_bytes((CloseCode::Normal, self))
+    }
+}
+
+impl<Code, Msg> CloseReason for (Code, Msg)
+where
+    Code: Into<u16>,
+    Msg: AsRef<[u8]>,
+{
+    type Bytes = Vec<u8>;
+    fn to_bytes(self) -> Self::Bytes {
+        let (code, reason) = (self.0.into(), self.1.as_ref());
+        let mut data = Vec::with_capacity(2 + reason.len());
+        data.extend_from_slice(&code.to_be_bytes());
+        data.extend_from_slice(reason);
+        data
     }
 }

@@ -1,10 +1,11 @@
 #![allow(clippy::unusual_byte_groupings)]
 use crate::*;
-use tokio::io::*;
+use std::io::{IoSlice, Result};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// WebSocket implementation for both client and server
 #[derive(Debug)]
-pub struct WebSocket<const SIDE: bool, Stream> {
+pub struct WebSocket<Stream> {
     /// it is a low-level abstraction that represents the underlying byte stream over which WebSocket messages are exchanged.
     pub stream: Stream,
 
@@ -12,37 +13,117 @@ pub struct WebSocket<const SIDE: bool, Stream> {
     ///
     /// Default: 16 MB
     pub max_payload_len: usize,
+
+    role: Role,
     is_closed: bool,
+    fragment: Option<MessageType>,
 }
 
-impl<const SIDE: bool, W> WebSocket<SIDE, W>
+impl<IO> WebSocket<IO> {
+    /// Create a new websocket client instance.
+    #[inline]
+    pub fn client(stream: IO) -> Self {
+        Self::from((stream, Role::Client))
+    }
+    /// Create a websocket server instance.
+    #[inline]
+    pub fn server(stream: IO) -> Self {
+        Self::from((stream, Role::Server))
+    }
+}
+
+impl<W> WebSocket<W>
 where
     W: Unpin + AsyncWrite,
 {
-    /// Send message to a endpoint.
-    #[inline]
-    pub async fn send(&mut self, data: impl Message) -> Result<()> {
-        let mut bytes = vec![];
-        data.encode::<SIDE>(&mut bytes);
-        self.stream.write_all(&bytes).await
+    #[doc(hidden)]
+    pub async fn send_raw(&mut self, frame: Frame<'_>) -> Result<()> {
+        let buf = match self.role {
+            Role::Server => {
+                if self.stream.is_write_vectored() {
+                    let mut head = [0; 10];
+                    let head_len = unsafe { frame.encode_header_unchecked(head.as_mut_ptr(), 0) };
+                    let total_len = head_len + frame.data.len();
+
+                    let mut bufs = [IoSlice::new(&head[..head_len]), IoSlice::new(frame.data)];
+                    let mut amt = self.stream.write_vectored(&bufs).await?;
+                    if amt == total_len {
+                        return Ok(());
+                    }
+                    while amt < head_len {
+                        bufs[0] = IoSlice::new(&head[amt..head_len]);
+                        amt += self.stream.write_vectored(&bufs).await?;
+                    }
+                    if amt < total_len {
+                        self.stream.write_all(&frame.data[amt - head_len..]).await?;
+                    }
+                    return Ok(());
+                }
+                frame.encode_without_mask()
+            }
+            Role::Client => frame.encode_with_mask(),
+        };
+        self.stream.write_all(&buf).await
     }
 
-    /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
-    #[inline]
-    pub async fn flash(&mut self) -> Result<()> {
-        self.stream.flush().await
+    /// Send message to a endpoint.
+    pub async fn send(&mut self, data: impl Into<Frame<'_>>) -> Result<()> {
+        self.send_raw(data.into()).await
     }
 
     /// - The Close frame MAY contain a body that indicates a reason for closing.
     pub async fn close<T>(mut self, reason: T) -> Result<()>
     where
-        T: CloseFrame,
-        T::Frame: AsRef<[u8]>,
+        T: CloseReason,
+        T::Bytes: AsRef<[u8]>,
     {
-        self.stream
-            .write_all(reason.encode::<SIDE>().as_ref())
-            .await?;
+        self.send_raw(Frame {
+            fin: true,
+            opcode: 8,
+            data: reason.to_bytes().as_ref(),
+        })
+        .await?;
+        self.stream.flush().await
+    }
 
+    /// A Ping frame may serve either as a keepalive or as a means to verify that the remote endpoint is still responsive.
+    ///
+    /// It is used to send ping frame.
+    ///
+    /// ### Example
+    ///
+    /// ```no_run
+    /// # use web_socket::*;
+    /// # async {
+    /// let writer = Vec::new();
+    /// let mut ws = WebSocket::client(writer);
+    /// ws.send_ping("Hello!").await;
+    /// # };
+    /// ```
+    pub async fn send_ping(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
+        self.send_raw(Frame {
+            fin: true,
+            opcode: 9,
+            data: data.as_ref(),
+        })
+        .await
+    }
+
+    /// A Pong frame sent in response to a Ping frame must have identical
+    /// "Application data" as found in the message body of the Ping frame being replied to.
+    ///
+    /// A Pong frame MAY be sent unsolicited.  This serves as a unidirectional heartbeat.  A response to an unsolicited Pong frame is not expected.
+    pub async fn send_pong(&mut self, data: impl AsRef<[u8]>) -> Result<()> {
+        self.send_raw(Frame {
+            fin: true,
+            opcode: 10,
+            data: data.as_ref(),
+        })
+        .await
+    }
+
+    /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
+    pub async fn flash(&mut self) -> Result<()> {
         self.stream.flush().await
     }
 }
@@ -61,12 +142,11 @@ where
     Ok(buf)
 }
 
-impl<const SIDE: bool, R> WebSocket<SIDE, R>
+impl<R> WebSocket<R>
 where
     R: Unpin + AsyncRead,
 {
     /// reads [Event] from websocket stream.
-    #[inline]
     pub async fn recv(&mut self) -> Result<Event> {
         if self.is_closed {
             return Err(std::io::Error::new(
@@ -74,37 +154,37 @@ where
                 "read after close",
             ));
         }
-        let event = self.read_frame().await;
+        let event = self.recv_event().await;
         if let Ok(Event::Close { .. } | Event::Error(..)) | Err(..) = event {
             self.is_closed = true;
         }
         event
     }
 
-    /// ### WebSocket Frame Header
-    ///
-    /// ```txt
-    ///  0                   1                   2                   3
-    ///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-    /// +-+-+-+-+-------+-+-------------+-------------------------------+
-    /// |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
-    /// |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
-    /// |N|V|V|V|       |S|             |   (if payload len==126/127)   |
-    /// | |1|2|3|       |K|             |                               |
-    /// +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
-    /// |     Extended payload length continued, if payload len == 127  |
-    /// + - - - - - - - - - - - - - - - +-------------------------------+
-    /// |                               |Masking-key, if MASK set to 1  |
-    /// +-------------------------------+-------------------------------+
-    /// | Masking-key (continued)       |          Payload Data         |
-    /// +-------------------------------- - - - - - - - - - - - - - - - +
-    /// :                     Payload Data continued ...                :
-    /// + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
-    /// |                     Payload Data continued ...                |
-    /// +---------------------------------------------------------------+
-    /// ```
-    #[inline]
-    async fn read_frame(&mut self) -> Result<Event> {
+    // ### WebSocket Frame Header
+    //
+    // ```txt
+    //  0                   1                   2                   3
+    //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    // +-+-+-+-+-------+-+-------------+-------------------------------+
+    // |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+    // |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+    // |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+    // | |1|2|3|       |K|             |                               |
+    // +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+    // |     Extended payload length continued, if payload len == 127  |
+    // + - - - - - - - - - - - - - - - +-------------------------------+
+    // |                               |Masking-key, if MASK set to 1  |
+    // +-------------------------------+-------------------------------+
+    // | Masking-key (continued)       |          Payload Data         |
+    // +-------------------------------- - - - - - - - - - - - - - - - +
+    // :                     Payload Data continued ...                :
+    // + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+    // |                     Payload Data continued ...                |
+    // +---------------------------------------------------------------+
+    // ```
+    /// reads [Event] from websocket stream.
+    pub async fn recv_event(&mut self) -> Result<Event> {
         let [b1, b2] = read_buf(&mut self.stream).await?;
 
         let fin = b1 & 0b_1000_0000 != 0;
@@ -132,7 +212,7 @@ where
         // frame that is not masked.
         //
         // A server MUST NOT mask any frames that it sends to the client.
-        if SERVER == SIDE {
+        if let Role::Server = self.role {
             if !is_masked {
                 err!("expected masked frame");
             }
@@ -150,22 +230,30 @@ where
             }
             let msg = self.read_payload(len).await?;
             match opcode {
-                8 => Ok(on_close(msg)),
+                8 => Ok(on_close(&msg)),
                 9 => Ok(Event::Ping(msg)),
                 10 => Ok(Event::Pong(msg)),
                 // 11-15 are reserved for further control frames
                 _ => err!("unknown opcode"),
             }
         } else {
-            let ty = match (opcode, fin) {
-                (2, true) => DataType::Complete(MessageType::Binary),
-                (1, true) => DataType::Complete(MessageType::Text),
-
-                (2, false) => DataType::Fragment(Fragment::Start(MessageType::Binary)),
-                (1, false) => DataType::Fragment(Fragment::Start(MessageType::Text)),
-                (0, false) => DataType::Fragment(Fragment::Next),
-                (0, true) => DataType::Fragment(Fragment::End),
-                _ => err!("unknown opcode"),
+            let ty = match (opcode, fin, self.fragment) {
+                (2, true, None) => DataType::Complete(MessageType::Binary),
+                (1, true, None) => DataType::Complete(MessageType::Text),
+                (2, false, None) => {
+                    self.fragment = Some(MessageType::Binary);
+                    DataType::Stream(Stream::Start(MessageType::Binary))
+                }
+                (1, false, None) => {
+                    self.fragment = Some(MessageType::Text);
+                    DataType::Stream(Stream::Start(MessageType::Text))
+                }
+                (0, false, Some(ty)) => DataType::Stream(Stream::Next(ty)),
+                (0, true, Some(ty)) => {
+                    self.fragment = None;
+                    DataType::Stream(Stream::End(ty))
+                }
+                _ => err!("invalid data frame"),
             };
             let len = match len {
                 126 => u16::from_be_bytes(read_buf(&mut self.stream).await?) as usize,
@@ -173,7 +261,7 @@ where
                 len => len,
             };
             if len > self.max_payload_len {
-                err!("payload length exceeded");
+                err!("payload too large");
             }
             let data = self.read_payload(len).await?;
             Ok(Event::Data { ty, data })
@@ -182,15 +270,18 @@ where
 
     async fn read_payload(&mut self, len: usize) -> Result<Box<[u8]>> {
         let mut data = vec![0; len].into_boxed_slice();
-        if SIDE == SERVER {
-            let mask: [u8; 4] = read_buf(&mut self.stream).await?;
-            self.stream.read_exact(&mut data).await?;
-            // TODO: Use SIMD wherever possible for best performance
-            for i in 0..data.len() {
-                data[i] ^= mask[i & 3];
+        match self.role {
+            Role::Server => {
+                let mask: [u8; 4] = read_buf(&mut self.stream).await?;
+                self.stream.read_exact(&mut data).await?;
+                // TODO: Use SIMD wherever possible for best performance
+                for i in 0..data.len() {
+                    data[i] ^= mask[i & 3];
+                }
             }
-        } else {
-            self.stream.read_exact(&mut data).await?;
+            Role::Client => {
+                self.stream.read_exact(&mut data).await?;
+            }
         }
         Ok(data)
     }
@@ -212,7 +303,7 @@ where
 /// - After both sending and receiving a Close message, an endpoint
 ///   considers the WebSocket connection closed and MUST close the
 ///   underlying TCP connection.
-fn on_close(msg: Box<[u8]>) -> Event {
+fn on_close(msg: &[u8]) -> Event {
     let code = msg
         .get(..2)
         .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
@@ -236,30 +327,15 @@ fn on_close(msg: Box<[u8]>) -> Event {
     }
 }
 
-impl<IO> WebSocket<CLIENT, IO> {
-    /// Create a new websocket client instance.
+impl<IO> From<(IO, Role)> for WebSocket<IO> {
     #[inline]
-    pub fn client(stream: IO) -> Self {
-        Self::from(stream)
-    }
-}
-
-impl<IO> WebSocket<SERVER, IO> {
-    /// Create a websocket server instance.
-    #[inline]
-    pub fn server(stream: IO) -> Self {
-        Self::from(stream)
-    }
-}
-
-impl<const SIDE: bool, IO> From<IO> for WebSocket<SIDE, IO> {
-    #[inline]
-    fn from(stream: IO) -> Self {
+    fn from((stream, role): (IO, Role)) -> Self {
         Self {
             stream,
             max_payload_len: 16 * 1024 * 1024,
-
+            role,
             is_closed: false,
+            fragment: None,
         }
     }
 }

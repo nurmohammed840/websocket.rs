@@ -6,7 +6,7 @@ use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
 };
-use web_socket::{WebSocket, CLIENT};
+use web_socket::WebSocket;
 
 macro_rules! io_err {
     [$kind: ident, $msg: expr] => {
@@ -55,7 +55,7 @@ impl Http {
     }
 }
 
-pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<CLIENT, BufReader<TcpStream>>> {
+pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<BufReader<TcpStream>>> {
     let mut stream = BufReader::new(TcpStream::connect(addr).await?);
 
     let (req, sec_key) = handshake::request(addr, path, [("", "")]);
