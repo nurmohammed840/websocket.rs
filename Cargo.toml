@@ -12,7 +12,7 @@ description = "Fastest webSocket implementation for both client and server"
 exclude = ["/examples", "/autobahn", "/tests",  ".*"]
 
 [dependencies]
-packed_simd = "0.3"
+packed_simd = { version = "0.3", optional = true }
 rand = "0.8"
 tokio = { version = "1", default-features = false, features = ["io-util"] }
 
@@ -20,3 +20,6 @@ tokio = { version = "1", default-features = false, features = ["io-util"] }
 tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread", "net"] }
 base64 = "0.21"
 sha-1 = "0.10"
+
+[features]
+simd = ["packed_simd"]
