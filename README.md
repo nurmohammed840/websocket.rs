@@ -45,6 +45,12 @@ For more examples, see [./examples](https://github.com/nurmohammed840/websocket.
 
 It passed all test of the [autobahn testsuite](https://github.com/crossbario/autobahn-testsuite)
 
+### Non goals
+
+- [Websocket protocol handshake](https://en.wikipedia.org/wiki/WebSocket#Protocol_handshake)
+- [TLS](https://en.wikipedia.org/wiki/Transport_Layer_Security)
+
+
 #### License
 
 This project is licensed under [Apache License 2.0](https://github.com/nurmohammed840/websocket.rs/blob/master/LICENSE)
