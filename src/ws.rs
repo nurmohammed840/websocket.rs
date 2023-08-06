@@ -2,6 +2,7 @@
 use crate::*;
 use std::io::{IoSlice, Result};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use packed_simd::u8x4;
 
 /// WebSocket implementation for both client and server
 #[derive(Debug)]
@@ -274,9 +275,18 @@ where
             Role::Server => {
                 let mask: [u8; 4] = read_buf(&mut self.stream).await?;
                 self.stream.read_exact(&mut data).await?;
-                // TODO: Use SIMD wherever possible for best performance
-                for i in 0..data.len() {
-                    data[i] ^= mask[i & 3];
+
+                let mut data_chunks = data.chunks_exact_mut(4);
+                let mask = u8x4::new(mask[0], mask[1], mask[2], mask[3]);
+
+                for data_chunk in &mut data_chunks {
+                    let mut data_vec = u8x4::from_slice_unaligned(data_chunk);
+                    data_vec ^= mask;
+                    data_vec.write_to_slice_unaligned(data_chunk);
+                }
+
+                for (i, item) in data_chunks.into_remainder().iter_mut().enumerate() {
+                    *item ^= mask.extract(i);
                 }
             }
             Role::Client => {
