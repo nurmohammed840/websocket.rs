@@ -24,10 +24,9 @@ impl WebSocketUpgrade {
         Fut: Future<Output = ()> + Send + 'static,
     {
         tokio::spawn(async move {
-            match self.on_upgrade.await {
-                Ok(upgraded) => callback(WebSocket::server(TokioIo::new(upgraded))).await,
-                Err(_err) => return,
-            };
+            if let Ok(upgraded) = self.on_upgrade.await {
+                callback(WebSocket::server(TokioIo::new(upgraded))).await;
+            }
         });
         Response::builder()
             .status(StatusCode::SWITCHING_PROTOCOLS)
@@ -62,20 +61,16 @@ where
         if !header_eq(&parts.headers, header::SEC_WEBSOCKET_VERSION, "13") {
             return Err(());
         }
-        let sec_websocket_key = parts
-            .headers
-            .get(header::SEC_WEBSOCKET_KEY)
-            .ok_or(())?
-            .clone();
-
-        let on_upgrade = parts
-            .extensions
-            .remove::<hyper::upgrade::OnUpgrade>()
-            .ok_or(())?;
-
         Ok(Self {
-            sec_websocket_key,
-            on_upgrade,
+            sec_websocket_key: parts
+                .headers
+                .get(header::SEC_WEBSOCKET_KEY)
+                .ok_or(())?
+                .clone(),
+            on_upgrade: parts
+                .extensions
+                .remove::<hyper::upgrade::OnUpgrade>()
+                .ok_or(())?,
         })
     }
 }
