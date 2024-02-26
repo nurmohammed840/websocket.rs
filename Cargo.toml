@@ -1,3 +1,6 @@
+[workspace]
+members = ["examples/axum-example"]
+
 [package]
 name = "web-socket"
 version = "0.7.0"
