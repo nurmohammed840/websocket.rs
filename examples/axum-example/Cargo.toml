@@ -1,0 +1,13 @@
+[package]
+name = "axum-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.36.0", features = ["full"] }
+axum = { version = "0.7" }
+web-socket = "0.7.0"
+sha-1 = "0.10"
+base64 = "0.21.7"
+hyper = "1.2.0"
+hyper-util = "0.1.3"
