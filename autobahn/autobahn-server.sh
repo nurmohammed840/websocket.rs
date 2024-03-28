@@ -10,8 +10,8 @@ function cleanup() {
 }
 trap cleanup TERM EXIT
 
-cargo build --release --example echo
-cargo run --release --example echo -- 127.0.0.1:9002 & WSSERVER_PID=$!
+cargo build --release --example autobahn
+cargo run --release --example autobahn -- 127.0.0.1:9002 & WSSERVER_PID=$!
 
 sleep 3
 

@@ -1,8 +1,8 @@
 mod utils;
 
 use std::{error::Error, str};
-use tokio::io::{AsyncRead, AsyncWrite};
-use utils::connect;
+use tokio::{io::*, net::TcpListener};
+use utils::*;
 use web_socket::*;
 
 type Result<T = (), E = Box<dyn Error>> = std::result::Result<T, E>;
@@ -12,20 +12,40 @@ const AGENT: &str = "agent=web-socket";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result {
-    let total: u32 = match connect(ADDR, "/getCaseCount").await?.recv().await? {
-        Event::Data { data, .. } => str::from_utf8(&data)?.parse()?,
-        _ => return Err("unable to get case count".into()),
-    };
+    if let Some(addr) = std::env::args().nth(1) {
+        let listener = TcpListener::bind(&addr).await?;
+        println!("[Echo Server] Listening at {addr}");
+        loop {
+            let (stream, _addr) = listener.accept().await?;
+            let mut stream = BufReader::new(stream);
+            let http = HttpRequest::parse(&mut stream).await?;
+            let key = get_sec_key(&http).expect("invalid websocket request");
 
-    for case in 1..=total {
-        let path = format!("/runCase?case={case}&{AGENT}");
-        let _ = echo(connect(ADDR, &path).await?).await;
+            stream
+                .write_all(handshake::response(key, [("x-agent", "web-socket")]).as_bytes())
+                .await?;
+
+            tokio::spawn(async {
+                let _ = echo(WebSocket::server(stream)).await;
+            });
+        }
+        // echo(connect(ADDR, &path).await?);
+    } else {
+        let total: u32 = match connect(ADDR, "/getCaseCount").await?.recv().await? {
+            Event::Data { data, .. } => str::from_utf8(&data)?.parse()?,
+            _ => return Err("unable to get case count".into()),
+        };
+
+        for case in 1..=total {
+            let path = format!("/runCase?case={case}&{AGENT}");
+            let _ = echo(connect(ADDR, &path).await?).await;
+        }
+
+        connect(ADDR, &format!("/updateReports?{AGENT}"))
+            .await?
+            .close(())
+            .await?;
     }
-
-    connect(ADDR, &format!("/updateReports?{AGENT}"))
-        .await?
-        .close(())
-        .await?;
 
     Ok(())
 }
