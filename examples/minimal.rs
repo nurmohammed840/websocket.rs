@@ -1,14 +1,12 @@
 mod utils;
 
+use tokio::io::*;
+use web_socket::*;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     example(utils::connect("ws.ifelse.io:80", "/").await?).await
 }
-
-// ---------------------------------------------------------------------
-
-use tokio::io::*;
-use web_socket::*;
 
 async fn example<IO>(mut ws: WebSocket<IO>) -> Result<()>
 where

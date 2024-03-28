@@ -15,12 +15,12 @@ macro_rules! io_err {
 }
 
 #[derive(Debug)]
-pub struct Http {
-    prefix: String,
+pub struct HttpRequest {
+    pub prefix: String,
     headers: HashMap<String, String>,
 }
 
-impl std::ops::Deref for Http {
+impl std::ops::Deref for HttpRequest {
     type Target = HashMap<String, String>;
 
     fn deref(&self) -> &Self::Target {
@@ -28,13 +28,13 @@ impl std::ops::Deref for Http {
     }
 }
 
-impl std::ops::DerefMut for Http {
+impl std::ops::DerefMut for HttpRequest {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.headers
     }
 }
 
-impl Http {
+impl HttpRequest {
     pub async fn parse<IO>(reader: &mut IO) -> Result<Self>
     where
         IO: Unpin + AsyncBufRead,
@@ -45,7 +45,7 @@ impl Http {
         let mut headers = HashMap::new();
 
         while let Some(line) = lines.next_line().await? {
-            if line == "" {
+            if line.is_empty() {
                 break;
             }
             let (key, value) = line.split_once(":").unwrap();
@@ -61,7 +61,7 @@ pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<BufReader<TcpSt
     let (req, sec_key) = handshake::request(addr, path, [("", "")]);
     stream.write_all(req.as_bytes()).await?;
 
-    let http = Http::parse(&mut stream).await?;
+    let http = HttpRequest::parse(&mut stream).await?;
 
     if !http.prefix.starts_with("HTTP/1.1 101 Switching Protocols") {
         io_err!(InvalidData, "expected upgrade connection");
@@ -75,4 +75,14 @@ pub async fn connect(addr: &str, path: &str) -> Result<WebSocket<BufReader<TcpSt
     }
 
     Ok(WebSocket::client(stream))
+}
+
+
+pub fn get_sec_key(req: &HttpRequest) -> Option<&String> {
+    if !req.get("connection")?.eq_ignore_ascii_case("upgrade")
+        || !req.get("upgrade")?.eq_ignore_ascii_case("websocket")
+    {
+        return None;
+    }
+    req.get("sec-websocket-key")
 }

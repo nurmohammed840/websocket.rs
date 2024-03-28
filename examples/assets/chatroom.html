@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+
+        .chat-container {
+            max-width: 600px;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .chat-box {
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #fff;
+        }
+
+        .message {
+            margin-bottom: 10px;
+        }
+
+        .message.user .message-text {
+            background-color: #dcf8c6;
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: inline-block;
+            max-width: 70%;
+        }
+
+        .message.other .message-text {
+            background-color: #f1f0f0;
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: inline-block;
+            max-width: 70%;
+        }
+
+        .message-other .message-text {
+            background-color: #f1f0f0;
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: inline-block;
+            max-width: 70%;
+        }
+
+        .message .message-text {
+            word-wrap: break-word;
+        }
+
+        .input-container {
+            display: flex;
+            padding: 10px;
+            background-color: #fff;
+            border-top: 1px solid #ccc;
+        }
+
+        .input-container input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .input-container button {
+            padding: 8px 20px;
+            border: none;
+            background-color: #4caf50;
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-container">
+        <div class="chat-box" id="chatBox">
+            <!-- Chat messages will be dynamically added here -->
+        </div>
+        <div class="input-container">
+            <input type="text" id="userInput" placeholder="Type your message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = new WebSocket("ws://localhost:8080/chat");
+        ws.onmessage = ev => {
+            addMessage("user", ev.data);
+        };
+        ws.onerror = err => {
+            console.log(err);
+        };
+
+        function sendMessage() {
+            var userInput = document.getElementById("userInput");
+            var userMessage = userInput.value.trim();
+            if (userMessage !== "") {
+                ws.send(`Send:${userMessage}`);
+                userInput.value = "";
+            }
+        }
+
+
+        function addMessage(sender, message) {
+            var chatBox = document.getElementById("chatBox");
+            var messageContainer = document.createElement("div");
+            messageContainer.className = "message " + sender;
+            var messageText = document.createElement("span");
+            messageText.className = "message-text";
+            messageText.textContent = message;
+            messageContainer.appendChild(messageText);
+            chatBox.appendChild(messageContainer);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>
