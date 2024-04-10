@@ -123,7 +123,7 @@ where
     }
 
     /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
-    pub async fn flash(&mut self) -> Result<()> {
+    pub async fn flush(&mut self) -> Result<()> {
         self.stream.flush().await
     }
 }
